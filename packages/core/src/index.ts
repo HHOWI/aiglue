@@ -1,3 +1,6 @@
+export { createAIEngine } from './engine.js'
+export type { AIEngine } from './engine.js'
+
 export type {
   AIEngineConfig,
   AIEResponse,
