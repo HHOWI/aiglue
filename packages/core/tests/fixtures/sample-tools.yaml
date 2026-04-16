@@ -1,0 +1,47 @@
+tools_yaml_version: "1.0"
+tools:
+  - name: get_users
+    description: "사용자 목록을 조회한다"
+    endpoint: GET /api/users
+    params:
+      role:
+        description: "사용자 역할 필터"
+        type: string
+        required: false
+        enum: [admin, user, guest]
+    response_type: table
+    risk_level: read
+    columns:
+      - { key: "id", label: "ID" }
+      - { key: "name", label: "이름" }
+      - { key: "role", label: "역할", type: "badge" }
+    examples:
+      - "사용자 목록 보여줘"
+      - "관리자 목록"
+
+  - name: update_user
+    description: "사용자 정보를 수정한다"
+    endpoint: PUT /api/users/:id
+    params:
+      id:
+        description: "사용자 ID"
+        type: string
+        required: true
+      name:
+        description: "변경할 이름"
+        type: string
+        required: false
+    risk_level: write
+    confirm_message: "사용자 정보를 수정합니다. 진행할까요?"
+    rate_limit: "5/min"
+
+  - name: delete_user
+    description: "사용자를 삭제한다"
+    endpoint: DELETE /api/users/:id
+    params:
+      id:
+        description: "사용자 ID"
+        type: string
+        required: true
+    risk_level: critical
+    confirm_message: "사용자를 삭제합니다. 이 작업은 되돌릴 수 없습니다."
