@@ -1,0 +1,18 @@
+tools_yaml_version: "1.0"
+tools:
+  - name: list_posts
+    description: "게시물 목록을 조회한다"
+    endpoint: GET /posts
+    params:
+      userId:
+        description: "작성자 ID로 필터"
+        type: string
+        required: false
+    response_type: table
+    risk_level: read
+    columns:
+      - { key: "id", label: "ID" }
+      - { key: "title", label: "제목" }
+    examples:
+      - "게시물 보여줘"
+      - "1번 사용자 게시물"

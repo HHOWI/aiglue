@@ -1,0 +1,16 @@
+{
+  "name": "aiglue-example-minimal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx server.ts"
+  },
+  "dependencies": {
+    "@aiglue/core": "workspace:*",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "@types/express": "^5.0.0"
+  }
+}
