@@ -1,5 +1,7 @@
 # aiglue
 
+[한국어](./README.ko.md)
+
 **YAML config turns any REST API into an AI-powered natural language interface.**
 
 No Swagger needed. No LangChain. No code. Just describe your APIs in `tools.yaml` and get a working AI chatbot in minutes.
