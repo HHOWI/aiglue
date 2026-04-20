@@ -2,7 +2,8 @@ import type { ToolDefinition } from '../types.js'
 import type { LintError } from './types.js'
 
 export function checkPathKeyConsistency(tool: ToolDefinition): LintError[] {
-  const pathMatches = tool.endpoint.match(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)
+  const pathSegment = tool.endpoint.split('?')[0]
+  const pathMatches = pathSegment.match(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)
   if (!pathMatches) return []
   const params = tool.params ?? {}
   const errors: LintError[] = []

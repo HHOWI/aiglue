@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const fx = (name: string) => resolve(__dirname, '../fixtures', name)
 
-describe('lintFile — schema only', () => {
+describe('lintFile', () => {
   it('returns ok for a valid file', async () => {
     const result = await lintFile(fx('lint-valid.yaml'))
     expect(result.ok).toBe(true)

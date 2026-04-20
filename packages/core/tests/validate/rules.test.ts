@@ -33,4 +33,14 @@ describe('rule: path-key-mismatch', () => {
     })
     expect(errors).toEqual([])
   })
+
+  it('ignores :key inside query string', () => {
+    const errors = checkPathKeyConsistency({
+      name: 'search',
+      description: 'x',
+      endpoint: 'GET /api/search?q=:query',
+      params: {},
+    })
+    expect(errors).toEqual([])
+  })
 })
