@@ -29,4 +29,11 @@ describe('lintFile — schema only', () => {
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0].rule).toBe('io')
   })
+
+  it('reports malformed YAML as a single error with rule=yaml', async () => {
+    const result = await lintFile(fx('lint-malformed.yaml'))
+    expect(result.ok).toBe(false)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0].rule).toBe('yaml')
+  })
 })

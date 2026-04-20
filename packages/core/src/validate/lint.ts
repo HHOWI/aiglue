@@ -59,7 +59,7 @@ export async function lintFile(path: string): Promise<LintResult> {
   }
 
   const validate = await getValidator()
-  const ok = validate(parsed) as boolean
+  const ok = validate(parsed)
   const errors = ajvErrorsToLint(validate.errors)
-  return { ok: ok && errors.length === 0, errors }
+  return { ok, errors }
 }
