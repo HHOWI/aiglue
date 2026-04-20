@@ -253,7 +253,8 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   function handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void> {
     return async (req: HandlerRequest, res: HandlerResponse): Promise<void> => {
       try {
-        const authHeader: string | undefined = req.headers?.authorization
+        const rawAuth = req.headers?.authorization
+        const authHeader: string | undefined = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth
         const authToken = authHeader?.startsWith('Bearer ')
           ? authHeader.slice(7)
           : authHeader

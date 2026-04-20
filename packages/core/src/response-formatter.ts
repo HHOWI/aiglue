@@ -18,13 +18,12 @@ export class ResponseFormatter {
     let total: number | undefined
 
     if (tool.response_mapping?.data_path) {
-      rows = this.getNestedValue(apiResponse, tool.response_mapping.data_path) ?? []
+      const extracted = this.getNestedValue(apiResponse, tool.response_mapping.data_path)
+      if (Array.isArray(extracted)) {
+        rows = extracted as Record<string, unknown>[]
+      }
     } else if (Array.isArray(apiResponse)) {
-      rows = apiResponse
-    }
-
-    if (!Array.isArray(rows)) {
-      rows = []
+      rows = apiResponse as Record<string, unknown>[]
     }
 
     if (tool.response_mapping?.total_path) {
