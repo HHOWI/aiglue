@@ -36,4 +36,10 @@ describe('lintFile — schema only', () => {
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0].rule).toBe('yaml')
   })
+
+  it('detects path-key mismatch through lintFile', async () => {
+    const result = await lintFile(fx('lint-missing-path-key.yaml'))
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.rule === 'path-key-mismatch')).toBe(true)
+  })
 })

@@ -6,6 +6,8 @@ import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import type { LintError, LintResult } from './types.js'
+import type { ToolsConfig } from '../types.js'
+import { checkPathKeyConsistency } from './rules.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -41,6 +43,14 @@ function ajvErrorsToLint(errors: ErrorObject[] | null | undefined): LintError[] 
   }))
 }
 
+function runSemanticRules(config: ToolsConfig): LintError[] {
+  const errors: LintError[] = []
+  for (const tool of config.tools ?? []) {
+    errors.push(...checkPathKeyConsistency(tool))
+  }
+  return errors
+}
+
 export async function lintFile(path: string): Promise<LintResult> {
   let text: string
   try {
@@ -61,5 +71,11 @@ export async function lintFile(path: string): Promise<LintResult> {
   const validate = await getValidator()
   const ok = validate(parsed)
   const errors = ajvErrorsToLint(validate.errors)
-  return { ok, errors }
+  if (!ok) {
+    return { ok: false, errors }
+  }
+
+  const semanticErrors = runSemanticRules(parsed as ToolsConfig)
+  const all = [...errors, ...semanticErrors]
+  return { ok: all.length === 0, errors: all }
 }
