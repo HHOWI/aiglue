@@ -48,4 +48,10 @@ describe('lintFile', () => {
     expect(result.ok).toBe(false)
     expect(result.errors.some(e => e.rule === 'confirm-message-required')).toBe(true)
   })
+
+  it('detects missing columns for table response_type', async () => {
+    const result = await lintFile(fx('lint-table-no-columns.yaml'))
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.rule === 'table-columns-required')).toBe(true)
+  })
 })

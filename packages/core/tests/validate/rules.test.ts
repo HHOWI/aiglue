@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkPathKeyConsistency, checkConfirmMessageForWrites } from '../../src/validate/rules.js'
+import { checkPathKeyConsistency, checkConfirmMessageForWrites, checkTableColumns } from '../../src/validate/rules.js'
 
 describe('rule: path-key-mismatch', () => {
   it('flags :id in endpoint when params lacks id', () => {
@@ -84,6 +84,51 @@ describe('rule: confirm-message-required', () => {
       description: 'x',
       endpoint: 'GET /x',
       risk_level: 'read',
+    })
+    expect(errors).toEqual([])
+  })
+})
+
+describe('rule: table-columns-required', () => {
+  it('flags table response_type without columns', () => {
+    const errors = checkTableColumns({
+      name: 'list',
+      description: 'x',
+      endpoint: 'GET /x',
+      response_type: 'table',
+    })
+    expect(errors).toHaveLength(1)
+    expect(errors[0].rule).toBe('table-columns-required')
+  })
+
+  it('flags table with empty columns array', () => {
+    const errors = checkTableColumns({
+      name: 'list',
+      description: 'x',
+      endpoint: 'GET /x',
+      response_type: 'table',
+      columns: [],
+    })
+    expect(errors).toHaveLength(1)
+  })
+
+  it('passes for table with columns', () => {
+    const errors = checkTableColumns({
+      name: 'list',
+      description: 'x',
+      endpoint: 'GET /x',
+      response_type: 'table',
+      columns: [{ key: 'id', label: 'ID' }],
+    })
+    expect(errors).toEqual([])
+  })
+
+  it('passes for non-table response_type', () => {
+    const errors = checkTableColumns({
+      name: 'list',
+      description: 'x',
+      endpoint: 'GET /x',
+      response_type: 'text',
     })
     expect(errors).toEqual([])
   })

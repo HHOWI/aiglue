@@ -30,3 +30,13 @@ export function checkConfirmMessageForWrites(tool: ToolDefinition): LintError[] 
     message: `risk_level "${risk}" requires a confirm_message`,
   }]
 }
+
+export function checkTableColumns(tool: ToolDefinition): LintError[] {
+  if (tool.response_type !== 'table') return []
+  if (tool.columns && tool.columns.length > 0) return []
+  return [{
+    path: `tools[${tool.name}].columns`,
+    rule: 'table-columns-required',
+    message: 'response_type "table" requires a non-empty columns array',
+  }]
+}
