@@ -45,4 +45,25 @@ describe('tools.schema.json', () => {
     }
     expect(validate(bad)).toBe(false)
   })
+
+  it('rejects empty tools array', () => {
+    const bad = { tools_yaml_version: '1.0', tools: [] }
+    expect(validate(bad)).toBe(false)
+  })
+
+  it('rejects empty confirm_message', () => {
+    const bad = {
+      tools_yaml_version: '1.0',
+      tools: [
+        {
+          name: 'update',
+          description: 'x',
+          endpoint: 'POST /x',
+          risk_level: 'write',
+          confirm_message: '',
+        },
+      ],
+    }
+    expect(validate(bad)).toBe(false)
+  })
 })
