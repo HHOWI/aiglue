@@ -5,6 +5,14 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": ["dist", "schema", "assets"],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./schema": "./schema/tools.schema.json"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -12,17 +20,21 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.8.0",
-    "vitest": "^3.1.0",
-    "@types/node": "^22.0.0"
+    "vitest": "^3.1.0"
   },
   "peerDependencies": {
     "express": "^4.0.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
-    "express": { "optional": true }
+    "express": {
+      "optional": true
+    }
   }
 }
