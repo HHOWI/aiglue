@@ -249,6 +249,94 @@ aiglue는 구조화된 JSON을 반환합니다. 렌더링은 개발자가 자유
 npx aiglue generate-mcp --tools ./tools.yaml --output ./mcp-server/
 ```
 
+## 백엔드 프레임워크별 예시
+
+Claude Code·Cursor를 쓰지 않는다면 아래 중 하나를 복사해서 조정하세요.
+
+### Express (Node.js)
+
+```yaml
+tools_yaml_version: "1.0"
+tools:
+  - name: list_posts
+    description: "블로그 글 목록 조회"
+    endpoint: GET /api/posts
+    params:
+      authorId:
+        description: "작성자 ID"
+        type: string
+        required: false
+    response_type: table
+    risk_level: read
+    columns:
+      - { key: "id", label: "ID" }
+      - { key: "title", label: "제목" }
+      - { key: "createdAt", label: "작성일", type: "date" }
+
+  - name: delete_post
+    description: "블로그 글 삭제"
+    endpoint: DELETE /api/posts/:id
+    params:
+      id:
+        description: "글 ID"
+        type: string
+        required: true
+    risk_level: critical
+    confirm_message: "이 글을 삭제합니다. 되돌릴 수 없습니다."
+```
+
+### FastAPI (Python)
+
+```yaml
+tools_yaml_version: "1.0"
+tools:
+  - name: query_orders
+    description: "주문 내역 조회. 기간·상태별 필터 가능."
+    endpoint: POST /api/orders/query
+    request_body_template:
+      page: 1
+      pageSize: 50
+    params:
+      status:
+        description: "주문 상태"
+        type: string
+        required: false
+        enum: [pending, paid, shipped, cancelled]
+    response_mapping:
+      data_path: "items"
+      total_path: "total"
+    response_type: table
+    risk_level: read
+    columns:
+      - { key: "orderId", label: "주문번호" }
+      - { key: "status", label: "상태", type: "badge" }
+      - { key: "amount", label: "금액", type: "number" }
+```
+
+### Spring (Java)
+
+```yaml
+tools_yaml_version: "1.0"
+tools:
+  - name: update_user_role
+    description: "사용자 권한 변경"
+    endpoint: PUT /api/users/:userId/role
+    params:
+      userId:
+        description: "사용자 ID"
+        type: string
+        required: true
+      role:
+        description: "부여할 권한"
+        type: string
+        required: true
+        enum: [admin, member, viewer]
+    risk_level: write
+    confirm_message: "사용자 권한을 변경합니다. 계속할까요?"
+```
+
+편집 후 `npx aiglue lint tools.yaml`을 실행해 스키마·시맨틱 규칙 위반을 잡으세요.
+
 ## tools.yaml 레퍼런스
 
 ```yaml
