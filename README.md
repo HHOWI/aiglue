@@ -42,7 +42,10 @@ Build chat UI
 
 ```bash
 npm install @aiglue/core
+npx aiglue init     # Copies IDE AI skill + rule + tools.yaml skeleton
 ```
+
+After `init`, your IDE AI (Claude Code, Cursor) knows how to edit `tools.yaml` correctly. Run `npx aiglue lint tools.yaml` after edits.
 
 ### 2. Describe your APIs in `tools.yaml`
 
@@ -401,6 +404,9 @@ aiglue runs as a sidecar process alongside your existing backend:
 
 - [x] Core Engine (tools.yaml parser, intent resolver, executor)
 - [x] Claude provider
+- [x] `tools.yaml` JSON Schema (IDE autocomplete, LLM authoring accuracy)
+- [x] `npx aiglue lint` (schema + semantic validation CLI)
+- [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` skeleton)
 - [ ] OpenAI-compatible provider (GPT, Ollama, vLLM)
 - [ ] `@aiglue/client` (React/Vue hooks)
 - [ ] `@aiglue/mcp` (MCP Server)

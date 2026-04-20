@@ -40,7 +40,10 @@ Tool 코드 45개 작성     npm install @aiglue/core
 
 ```bash
 npm install @aiglue/core
+npx aiglue init     # IDE AI 스킬·룰·tools.yaml 스켈레톤 복사
 ```
+
+`init` 후 Claude Code·Cursor 같은 IDE AI가 `tools.yaml` 편집 방법을 바로 안다. 편집 후에는 `npx aiglue lint tools.yaml`.
 
 ### 2. `tools.yaml`에 API 설명
 
@@ -399,6 +402,9 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 
 - [x] Core Engine (tools.yaml 파서, Intent Resolver, Executor)
 - [x] Claude Provider
+- [x] `tools.yaml` JSON Schema (IDE 자동완성·LLM 작성 정확도 확보)
+- [x] `npx aiglue lint` (스키마 + 시맨틱 검증 CLI)
+- [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` 스켈레톤)
 - [ ] OpenAI 호환 Provider (GPT, Ollama, vLLM)
 - [ ] `@aiglue/client` (React/Vue hooks)
 - [ ] `@aiglue/mcp` (MCP Server)
