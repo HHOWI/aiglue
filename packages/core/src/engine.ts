@@ -237,7 +237,6 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
         return formatter.formatError(errorMsg, 'API_ERROR')
       }
 
-      const tool = registry.getTool(toolName)!
       const response = formatter.formatAction(true, `${toolName} 작업이 완료되었습니다.`)
 
       logger.log({
