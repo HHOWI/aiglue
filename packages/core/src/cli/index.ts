@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runLint } from './lint.js'
+import { runInit } from './init.js'
 
 async function main(): Promise<void> {
   const [, , subcommand, ...rest] = process.argv
@@ -23,6 +24,9 @@ async function main(): Promise<void> {
   switch (subcommand) {
     case 'lint':
       code = await runLint(rest, io)
+      break
+    case 'init':
+      code = await runInit(rest, io)
       break
     default:
       io.stderr(`unknown subcommand: ${subcommand}\n`)
