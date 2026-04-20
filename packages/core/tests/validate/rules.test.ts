@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkPathKeyConsistency } from '../../src/validate/rules.js'
+import { checkPathKeyConsistency, checkConfirmMessageForWrites } from '../../src/validate/rules.js'
 
 describe('rule: path-key-mismatch', () => {
   it('flags :id in endpoint when params lacks id', () => {
@@ -40,6 +40,50 @@ describe('rule: path-key-mismatch', () => {
       description: 'x',
       endpoint: 'GET /api/search?q=:query',
       params: {},
+    })
+    expect(errors).toEqual([])
+  })
+})
+
+describe('rule: confirm-message-required', () => {
+  it('flags write tool without confirm_message', () => {
+    const errors = checkConfirmMessageForWrites({
+      name: 'update',
+      description: 'x',
+      endpoint: 'POST /x',
+      risk_level: 'write',
+    })
+    expect(errors).toHaveLength(1)
+    expect(errors[0].rule).toBe('confirm-message-required')
+  })
+
+  it('flags critical tool without confirm_message', () => {
+    const errors = checkConfirmMessageForWrites({
+      name: 'del',
+      description: 'x',
+      endpoint: 'DELETE /x',
+      risk_level: 'critical',
+    })
+    expect(errors).toHaveLength(1)
+  })
+
+  it('passes when confirm_message present', () => {
+    const errors = checkConfirmMessageForWrites({
+      name: 'update',
+      description: 'x',
+      endpoint: 'POST /x',
+      risk_level: 'write',
+      confirm_message: '진행할까요?',
+    })
+    expect(errors).toEqual([])
+  })
+
+  it('passes for read tools', () => {
+    const errors = checkConfirmMessageForWrites({
+      name: 'list',
+      description: 'x',
+      endpoint: 'GET /x',
+      risk_level: 'read',
     })
     expect(errors).toEqual([])
   })

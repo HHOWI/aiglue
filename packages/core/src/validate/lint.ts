@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import type { LintError, LintResult } from './types.js'
 import type { ToolsConfig } from '../types.js'
-import { checkPathKeyConsistency } from './rules.js'
+import { checkPathKeyConsistency, checkConfirmMessageForWrites } from './rules.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -47,6 +47,7 @@ function runSemanticRules(config: ToolsConfig): LintError[] {
   const errors: LintError[] = []
   for (const tool of config.tools ?? []) {
     errors.push(...checkPathKeyConsistency(tool))
+    errors.push(...checkConfirmMessageForWrites(tool))
   }
   return errors
 }

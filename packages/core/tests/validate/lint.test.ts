@@ -42,4 +42,10 @@ describe('lintFile', () => {
     expect(result.ok).toBe(false)
     expect(result.errors.some(e => e.rule === 'path-key-mismatch')).toBe(true)
   })
+
+  it('detects missing confirm_message for write/critical', async () => {
+    const result = await lintFile(fx('lint-write-no-confirm.yaml'))
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.rule === 'confirm-message-required')).toBe(true)
+  })
 })

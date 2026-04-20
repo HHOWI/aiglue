@@ -19,3 +19,14 @@ export function checkPathKeyConsistency(tool: ToolDefinition): LintError[] {
   }
   return errors
 }
+
+export function checkConfirmMessageForWrites(tool: ToolDefinition): LintError[] {
+  const risk = tool.risk_level ?? 'read'
+  if (risk === 'read') return []
+  if (tool.confirm_message && tool.confirm_message.length > 0) return []
+  return [{
+    path: `tools[${tool.name}]`,
+    rule: 'confirm-message-required',
+    message: `risk_level "${risk}" requires a confirm_message`,
+  }]
+}
