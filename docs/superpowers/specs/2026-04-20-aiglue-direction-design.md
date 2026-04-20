@@ -74,7 +74,7 @@ flowchart LR
 
 | 컴포넌트 | 상태 | 역할 |
 |---|---|---|
-| `@aiglue/core` 런타임 | 기존 유지 | `engine.ts` 파이프라인 (resolve · safety · execute · format) 변경 없음 |
+| `@aiglue/core` 런타임 | 기존 유지 + 최소 확장 | `engine.ts` 파이프라인(resolve · safety · execute · format)은 동일. `processMessage` · `HandlerRequest`에 `history?: ChatMessage[]` 릴레이만 추가 (§9 참조) |
 | `tools.yaml` JSON Schema | 신규 | 공식 스키마. IDE 자동완성·LLM 생성 오류 방지의 근거. 경로 예: `packages/core/schema/tools.schema.json` |
 | Claude skill / Cursor rule 자산 | 신규 | aiglue 스펙·작성 규칙·예시를 담은 AI 지침 문서. 패키지에 포함해 배포 (`packages/core/assets/`) |
 | `npx aiglue init` | 신규 | 위 지침을 `.claude/skills/`·`.cursor/rules/`에 복사 + 최소 `tools.yaml` 스켈레톤 생성 |
@@ -102,9 +102,13 @@ flowchart LR
 
 에러 메시지 품질에 투자한다. AI 생성이 아닌 사람이 수기로 쓸 때 가장 덕을 본다.
 
-## 9. 런타임 에러 처리
+## 9. 런타임 에러 처리 · 대화 범위
 
-현재 SafetyGate의 whitelist + risk_level 분기, Executor의 상태코드 검사, Formatter의 에러 응답 빌더를 그대로 유지. MVP에서 런타임 동작은 변경하지 않는다. 런타임 에러 코드 카탈로그(`RATE_LIMIT_EXCEEDED`, `TOOL_NOT_ALLOWED`, `API_ERROR`, `INTERNAL_ERROR` 등)도 그대로.
+현재 SafetyGate의 whitelist + risk_level 분기, Executor의 상태코드 검사, Formatter의 에러 응답 빌더를 그대로 유지. 런타임 에러 코드 카탈로그(`RATE_LIMIT_EXCEEDED`, `TOOL_NOT_ALLOWED`, `API_ERROR`, `INTERNAL_ERROR` 등)도 그대로.
+
+**대화 범위 결정**: aiglue는 "지시 → 액션" 실행기로 포지셔닝하며, 누적 대화·멀티턴 에이전트는 스코프 밖이다. 진짜 에이전트 경험이 필요하면 클라이언트가 LangGraph·Mastra 등을 aiglue 위에 얹어 aiglue를 tool 제공자로 호출한다.
+
+**History 릴레이 (예외적인 런타임 추가)**: 엔진은 **stateless를 유지**하되, 클라이언트가 요청에 `history: ChatMessage[]`를 실어 보내면 엔진이 윈도우(기본 최근 10개, `createAIEngine({ history: { maxMessages } })`로 조정)로 잘라 `IntentResolver`에 릴레이한다. 용도는 `clarify` 후속 답변·`confirm` 수정 요청·짧은 파라미터 변경("지난주는?") 해석에 국한. `tool` 실행 결과의 원본 데이터는 history에 싣지 말 것 — 토큰 폭주 방지. 서버측 세션 저장은 도입하지 않는다 (수평확장 원칙 유지).
 
 ## 10. 테스트 전략
 

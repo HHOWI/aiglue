@@ -1416,6 +1416,41 @@ description: Use when authoring or editing aiglue tools.yaml — the file that m
 - 삭제 엔드포인트에 `risk_level: write` (대신 `critical` 사용)
 - `endpoint`에서 ":" 없이 path 파라미터 표기 (`/users/{id}`는 허용되지 않음 — `/users/:id`)
 
+## 사용자 피로 최소화 패턴
+
+사용자가 매 질의에 모든 조건을 정밀히 적지 않아도 되도록 설계합니다. 다섯 축:
+
+- **`params.default`**: 자주 쓰는 기본값을 지정. 생략 시 자동 적용됩니다.
+
+  ```yaml
+  params:
+    period:
+      description: "기간 (this_week, last_week, this_month)"
+      type: string
+      default: this_week
+  ```
+
+- **`examples` 풍부화 (5개 이상 권장)**: 같은 의도의 다양한 자연어 표현을 나열해 표현 흔들림을 흡수합니다.
+
+  ```yaml
+  examples:
+    - "사용자 보여줘"
+    - "유저 목록"
+    - "활성 유저"
+    - "멤버 리스트"
+    - "가입자 조회"
+  ```
+
+- **`description`에 기본 동작 명시**: 조건이 없을 때 무엇이 일어나는지 한 문장 추가. LLM이 안전한 기본값을 고르게 됩니다.
+
+  ```yaml
+  description: "사용자 목록을 조회한다. 조건 미지정 시 최근 30일 내 활성 사용자."
+  ```
+
+- **조직 특수 용어·관습은 `domainDocs`로 주입**: `createAIEngine({ domainDocs: "..." })` — system prompt에 합쳐집니다. 예: "이 시스템에서 '환자'는 병동 재원 중인 환자를 의미한다".
+
+- **LLM은 기본적으로 부족 정보를 되묻도록 지시되어 있음** (system prompt에 내장). 완전한 한 문장을 사용자에게 강요하지 말 것 — clarify 왕복 + history로 짧게 답해도 해석됩니다.
+
 ## 검증 플로우
 
 편집 후 항상:
@@ -1469,6 +1504,13 @@ npx aiglue lint tools.yaml
 ```
 
 lint 에러 룰 카탈로그: `schema` · `path-key-mismatch` · `confirm-message-required` · `table-columns-required` · `duplicate-name`.
+
+## 사용자 피로 최소화
+
+- `params.default`로 자주 쓰는 값을 기본값으로 지정
+- `examples`에 같은 의도의 표현을 5개 이상 나열
+- `description`에 "조건 미지정 시 기본 동작" 명시
+- 조직 특수 용어는 `domainDocs`로 system prompt에 주입
 
 ## 템플릿
 
@@ -2035,7 +2077,249 @@ git commit -m "docs: add tools.yaml examples by backend framework (Express, Fast
 
 ---
 
-## Task 12: 전체 회귀 · 빌드 검증
+## Task 12: 엔진 history 릴레이 (클라이언트 전달, 최근 10개 윈도우)
+
+**Files:**
+- Modify: `packages/core/src/types.ts`
+- Modify: `packages/core/src/engine.ts`
+- Modify: `packages/core/tests/engine.test.ts`
+
+**배경:** `IntentResolver.resolve()`는 이미 `conversationHistory?` 파라미터를 받지만, 엔진이 이를 릴레이하지 않음. 스펙상 aiglue는 stateless — 서버는 세션 저장 안 함, 대신 클라이언트가 history를 매 요청에 실어 보냄. 엔진은 기본 10개로 잘라 resolver에 전달.
+
+- [ ] **Step 1: 타입 확장**
+
+`packages/core/src/types.ts`의 `AIEngineConfig`에 `history` 추가:
+
+```ts
+export interface AIEngineConfig {
+  tools: string
+  domainDocs?: string
+  llm: LLMConfig
+  auth?: AuthConfig
+  rateLimiting?: RateLimitConfig
+  baseUrl?: string
+  history?: HistoryConfig
+}
+
+export interface HistoryConfig {
+  /** 최대 유지할 대화 메세지 수. 기본 10. 초과 시 오래된 것부터 drop. */
+  maxMessages?: number
+}
+```
+
+그리고 `engine.ts`의 `HandlerRequest.body`에 `history?: ChatMessage[]` 추가 (다음 스텝).
+
+- [ ] **Step 2: 실패 테스트 작성**
+
+`packages/core/tests/engine.test.ts` 하단에 append:
+
+```ts
+describe('createAIEngine — history passthrough', () => {
+  it('relays client-provided history to the resolver', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null,
+      textContent: 'ok',
+      tokensIn: 0,
+      tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    await engine.processMessage('follow-up', {
+      history: [
+        { role: 'user', content: 'prev q' },
+        { role: 'assistant', content: 'prev a' },
+      ],
+    })
+
+    const passedMessages = mockResolve.mock.calls[0][0]
+    const contents = passedMessages.map((m: { content: string }) => m.content)
+    expect(contents).toContain('prev q')
+    expect(contents).toContain('prev a')
+    expect(contents).toContain('follow-up')
+  })
+
+  it('trims history to maxMessages (default 10)', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    const longHistory = Array.from({ length: 14 }, (_, i) => ({
+      role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: `msg${i}`,
+    }))
+    await engine.processMessage('new', { history: longHistory })
+
+    const contents = mockResolve.mock.calls[0][0].map((m: { content: string }) => m.content)
+    expect(contents).not.toContain('msg0')
+    expect(contents).not.toContain('msg3')
+    expect(contents).toContain('msg4')
+    expect(contents).toContain('msg13')
+    expect(contents).toContain('new')
+  })
+
+  it('honors custom maxMessages from engine config', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+      history: { maxMessages: 2 },
+    })
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    await engine.processMessage('new', {
+      history: [
+        { role: 'user', content: 'q1' },
+        { role: 'assistant', content: 'a1' },
+        { role: 'user', content: 'q2' },
+        { role: 'assistant', content: 'a2' },
+      ],
+    })
+
+    const contents = mockResolve.mock.calls[0][0].map((m: { content: string }) => m.content)
+    expect(contents).not.toContain('q1')
+    expect(contents).not.toContain('a1')
+    expect(contents).toContain('q2')
+    expect(contents).toContain('a2')
+  })
+
+  it('works without history (backward compatible)', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: null, textContent: 'hi', tokensIn: 0, tokensOut: 0,
+      }),
+    })
+    const result = await engine.processMessage('hi')
+    expect(result.type).toBe('text')
+  })
+})
+```
+
+- [ ] **Step 3: 테스트 실패 확인**
+
+```bash
+pnpm --filter @aiglue/core exec vitest run tests/engine.test.ts -t "history passthrough"
+```
+
+Expected: FAIL — history 릴레이가 구현되지 않음.
+
+- [ ] **Step 4: 엔진 수정**
+
+`packages/core/src/engine.ts` 상단 import에 `ChatMessage` 추가:
+
+```ts
+import type { AIEngineConfig, AIEResponse, ChatMessage } from './types.js'
+```
+
+`HandlerRequest` 인터페이스의 `body` 필드에 `history?: ChatMessage[]` 추가:
+
+```ts
+export interface HandlerRequest {
+  headers?: Record<string, string | string[] | undefined>
+  body?: {
+    message?: string
+    userId?: string
+    action?: string
+    toolName?: string
+    params?: Record<string, unknown>
+    history?: ChatMessage[]
+  }
+}
+```
+
+`AIEngine` 인터페이스의 `processMessage` 시그니처 확장:
+
+```ts
+export interface AIEngine {
+  processMessage(
+    message: string,
+    options?: { authToken?: string; userId?: string; history?: ChatMessage[] },
+  ): Promise<AIEResponse>
+  confirmAndExecute(
+    toolName: string,
+    params: Record<string, unknown>,
+    options?: { authToken?: string },
+  ): Promise<AIEResponse>
+  handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void>
+  _setProvider(provider: LLMProvider): void
+}
+```
+
+`createAIEngine` 내부에 윈도우 상수 + trim 헬퍼 추가 (기존 `new Logger()` 줄 바로 다음):
+
+```ts
+  const maxHistory = config.history?.maxMessages ?? 10
+
+  function trimHistory(history: ChatMessage[] | undefined): ChatMessage[] {
+    if (!history || history.length === 0) return []
+    if (history.length <= maxHistory) return history
+    return history.slice(-maxHistory)
+  }
+```
+
+`processMessage` 시그니처를 확장하고 resolver 호출을 변경:
+
+```ts
+  async function processMessage(
+    message: string,
+    options?: { authToken?: string; userId?: string; history?: ChatMessage[] },
+  ): Promise<AIEResponse> {
+```
+
+그리고 resolver 호출부분 (`const llmResponse = await resolver.resolve(message)`) 를 다음으로 교체:
+
+```ts
+      const trimmedHistory = trimHistory(options?.history)
+      const llmResponse = await resolver.resolve(message, trimmedHistory)
+```
+
+`handler()` 안의 처리에서 body.history 를 릴레이:
+
+```ts
+        const message: string = req.body?.message ?? ''
+        const userId: string | undefined = req.body?.userId
+        const history = req.body?.history
+        const result = await processMessage(message, { authToken, userId, history })
+        res.json(result)
+```
+
+- [ ] **Step 5: 테스트 통과 확인**
+
+```bash
+pnpm --filter @aiglue/core exec vitest run tests/engine.test.ts
+```
+
+Expected: PASS — 기존 모든 engine 테스트 + 신규 history 4 케이스.
+
+- [ ] **Step 6: 커밋**
+
+```bash
+git add packages/core/src/engine.ts packages/core/src/types.ts packages/core/tests/engine.test.ts
+git commit -m "feat(core): thread client-provided history through engine (window=10)"
+```
+
+---
+
+## Task 13: 전체 회귀 · 빌드 검증
 
 **Files:** 없음 (검증만).
 
@@ -2099,8 +2383,9 @@ git status
 | `npx aiglue init` (spec §6, §7) | Task 9, 10 |
 | `npx aiglue lint` + 스키마·시맨틱 체크 (spec §6, §8) | Task 2~7 |
 | README 예시 카탈로그 (spec §6) | Task 11 |
-| 런타임 변경 없음 (spec §9) | 모든 태스크 — 기존 `src/` 파일 수정 없음 |
-| 회귀 방지 (spec §10) | Task 12 |
+| 사용자 피로 최소화 패턴 (스펙 후속 결정) | Task 8 (skill 본문 섹션) |
+| 클라이언트 history 릴레이, window=10 (스펙 후속 결정) | Task 12 |
+| 회귀 방지 (spec §10) | Task 13 |
 
 열린 질문 세 가지(§13)도 결정되어 반영:
 - 스켈레톤: read 1개 + write 1개 + 주석 (Task 8)
