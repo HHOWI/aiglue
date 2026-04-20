@@ -8,8 +8,9 @@ aiglue는 `tools.yaml` 하나로 기존 REST API를 자연어 인터페이스로
 
 ## Repository layout (pnpm workspace)
 
-- `packages/core/` — `@aiglue/core`, 유일한 배포 대상 패키지. 엔진·실행기·프로바이더가 모두 여기에 있다.
+- `packages/core/` — `@aiglue/core`, 유일한 배포 대상 패키지. 엔진·실행기·프로바이더·검증기·CLI가 모두 여기에 있다. 주요 하위 경로: `src/{cli,validate,providers}/`, `schema/` (공식 JSON Schema), `assets/` (Claude skill·Cursor rule·tools.yaml 스켈레톤 — `aiglue init`이 배포).
 - `examples/minimal/` — JSONPlaceholder로 동작하는 최소 Express 예제. 새 기능은 가능하면 여기서 end-to-end로도 확인한다.
+- `docs/superpowers/` — 스펙(`specs/`)과 구현 계획(`plans/`) 아카이브.
 - `tsconfig.base.json` — 루트 공통 TS 설정 (`strict`, `moduleResolution: bundler`, ESM). 각 패키지는 이것을 extends.
 - `pnpm-workspace.yaml`이 `packages/*`와 `examples/*`를 워크스페이스로 선언한다.
 
@@ -41,25 +42,42 @@ pnpm --filter @aiglue/core exec vitest run -t "should return confirm"  # 특정 
 ANTHROPIC_API_KEY=... pnpm --filter aiglue-example-minimal start
 ```
 
+CLI (빌드 후 `dist/cli/index.js`, 배포 시 `npx aiglue`):
+
+```bash
+pnpm --filter @aiglue/core build
+node packages/core/dist/cli/index.js --help
+node packages/core/dist/cli/index.js lint <tools.yaml>      # schema + 5 semantic rules
+node packages/core/dist/cli/index.js lint --json <file>
+node packages/core/dist/cli/index.js init [--cwd <path>] [--force]
+```
+
+`aiglue lint`는 exit 0(정상) · 1(위반) · 2(인자 없음). 규칙 id: `schema` · `path-key-mismatch` · `confirm-message-required` · `table-columns-required` · `duplicate-name` · `io` · `yaml`.
+
 ## Core architecture
 
 `createAIEngine()` (`packages/core/src/engine.ts`)이 전체 진입점이며, 내부적으로 다음 파이프라인을 순서대로 돈다. 버그 수정·기능 추가 시 이 흐름 어디에 해당하는지 먼저 특정할 것.
 
 ```
-processMessage(userText)
+processMessage(userText, { authToken, userId, history })
   1. RateLimiter.check(userId)          // rate-limiter.ts, "60/min" 포맷 파싱
-  2. IntentResolver.resolve(userText)   // intent-resolver.ts — system prompt + registry.toLLMTools()
+  2. trimHistory(history)               // engine.ts — tail slice, default maxMessages=10
+                                        //   config.history.maxMessages로 override
+  3. IntentResolver.resolve(userText, trimmedHistory)
+                                        // intent-resolver.ts — system prompt + registry.toLLMTools()
                                         //   → LLMProvider.resolve() (providers/claude.ts)
-  3. 분기:
+  4. 분기:
      - toolCall 없음        → text 응답
      - SafetyGate.check()   // safety.ts — whitelist + risk_level
          · 화이트리스트 외 → error
          · risk_level=read → 통과
          · write|critical  → confirm 응답 (실행 안 함)
      - Executor.execute()   // executor.ts — endpoint 파싱, :path 치환, query/body 빌드, fetch
-  4. ResponseFormatter.format()         // response-formatter.ts — tool.response_type에 따라 text/table
-  5. Logger.log(RequestLog)             // logger.ts — JSON 한 줄 stdout
+  5. ResponseFormatter.format()         // response-formatter.ts — tool.response_type에 따라 text/table
+  6. Logger.log(RequestLog)             // logger.ts — JSON 한 줄 stdout
 ```
+
+`history`는 aiglue가 저장하지 않는다. 클라이언트가 매 요청에 `ChatMessage[]`를 실어 보내고, 엔진은 최근 N개만 resolver에 릴레이한다. 용도는 `clarify` 후속 답변·`confirm` 수정·짧은 파라미터 변경("지난주는?") 해석에 국한. 누적 대화·멀티턴 에이전트는 스코프 밖 (agent 프레임워크가 aiglue를 tool 제공자로 호출하는 구조).
 
 `confirmAndExecute()`는 클라이언트가 `confirm` 응답을 받은 뒤 동의했을 때 호출하는 별도 경로로, resolve·safety를 건너뛰고 executor부터 시작한다. 즉 **확인은 클라이언트 측 라운드트립**이며 엔진은 상태를 갖지 않는다.
 
@@ -70,10 +88,12 @@ processMessage(userText)
 - **`Executor`** — path param은 `:key` 치환, GET은 쿼리스트링, POST/PUT/PATCH는 `request_body_template`과 params 머지. `Authorization: Bearer <token>`은 호출자가 넘긴 authToken을 그대로 릴레이 (auth 시스템은 기존 API가 소유).
 - **`SafetyGate`** — 항상 화이트리스트 우선. risk_level 미지정 시 `read`로 간주.
 - **`ResponseFormatter`** — `response_type=table`이면 `response_mapping.data_path` (점 표기 경로)로 배열 추출, 없으면 응답이 배열이라고 가정. `confirm`/`action`/`error` 빌더도 여기서 관리.
+- **`validate/`** (`lint.ts`·`rules.ts`·`types.ts`) — `lintFile(path)`는 IO → YAML parse → ajv schema 검증 → semantic rules 순으로 단락 실행하고 `{ ok, errors: LintError[] }` 반환. 스키마 실패 시 semantic은 건너뜀. 규칙 함수는 순수 (단일 `ToolDefinition` 또는 전체 `tools[]` 입력). `@aiglue/core`는 `lintFile`과 관련 타입을 public export.
+- **`cli/`** (`index.ts`·`lint.ts`·`init.ts`) — `process.argv` 디스패처 + `CliIO` 인터페이스(DI)로 테스트 가능. `runLint`는 human/`--json` 출력 + exit 0/1/2. `runInit`은 `packages/core/assets/`에서 `.claude/skills/aiglue.md`·`.cursor/rules/aiglue.md`·`tools.yaml`을 타깃 `cwd`에 복사하며 기본은 존재 시 skip, `--force`로 덮어쓰기.
 
 ### 타입 경계
 
-모든 외부 노출 타입은 `types.ts`에 모여 있고 `index.ts`에서 재export된다. `AIEResponse`는 discriminated union (`type: 'text'|'table'|'action'|'confirm'|'clarify'|'error'`)이므로 프런트 렌더링은 `type`으로 분기. `AIEClarifyResponse`는 타입은 있지만 현재 포맷터가 만들어내지는 않는다 (미구현).
+모든 외부 노출 타입은 `types.ts`에 모여 있고 `index.ts`에서 재export된다 (`AIEngine`·`AIEngineConfig`·`HistoryConfig`·`ChatMessage`·`AIEResponse` union·`ToolsConfig`·`ToolDefinition`·`LLMConfig`·`AuthConfig`·`LintError`·`LintResult`). `AIEResponse`는 discriminated union (`type: 'text'|'table'|'action'|'confirm'|'clarify'|'error'`)이므로 프런트 렌더링은 `type`으로 분기. `AIEClarifyResponse`는 타입은 있지만 현재 포맷터가 만들어내지는 않는다 (미구현).
 
 ## Code conventions
 
@@ -85,5 +105,11 @@ processMessage(userText)
 
 ## Roadmap 상태 (README 기준)
 
-- 구현됨: 코어 엔진 (parser/resolver/executor/formatter), Claude 프로바이더, 화이트리스트 기반 safety, rate limiter, confirm 플로우.
-- 미구현(의도적 공백): `openai-compatible` 프로바이더 분기 (`LLMConfig.provider` 타입에는 있지만 엔진이 항상 `ClaudeProvider`를 생성), `@aiglue/client`, `@aiglue/mcp`, `npx aiglue generate-mcp`, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로. 이 영역에 변경을 넣기 전 README Roadmap 섹션과 맞물리는지 확인할 것.
+- 구현됨:
+  - 코어 엔진 (parser/resolver/executor/formatter), Claude 프로바이더, 화이트리스트 기반 safety, rate limiter, confirm 플로우
+  - `tools.yaml` JSON Schema (`packages/core/schema/`)
+  - `aiglue lint` CLI — schema + 5 semantic rules, human·`--json` 출력
+  - `aiglue init` CLI — Claude skill·Cursor rule·tools.yaml 스켈레톤 배포
+  - 엔진 stateless history 릴레이 (default 10개 윈도우)
+  - README 프레임워크 예시 카탈로그 (Express / FastAPI / Spring)
+- 미구현(의도적 공백): `openai-compatible` 프로바이더 분기 (`LLMConfig.provider` 타입에는 있지만 엔진이 항상 `ClaudeProvider`를 생성), `@aiglue/client`, `@aiglue/mcp`, `npx aiglue generate-mcp`, `npx aiglue import-openapi` (1.5차), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로. 설계 결정은 `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md` 참고.
