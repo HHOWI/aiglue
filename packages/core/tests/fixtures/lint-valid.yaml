@@ -1,0 +1,7 @@
+tools_yaml_version: "1.0"
+tools:
+  - name: get_items
+    description: "아이템 목록을 조회한다"
+    endpoint: GET /api/items
+    response_type: text
+    risk_level: read
