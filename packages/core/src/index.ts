@@ -14,4 +14,6 @@ export type {
   ToolDefinition,
   LLMConfig,
   AuthConfig,
+  ChatMessage,
+  HistoryConfig,
 } from './types.js'
