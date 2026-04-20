@@ -7,7 +7,7 @@ import { Executor } from './executor.js'
 import { ResponseFormatter } from './response-formatter.js'
 import { RateLimiter } from './rate-limiter.js'
 import { Logger } from './logger.js'
-import type { AIEngineConfig, AIEResponse } from './types.js'
+import type { AIEngineConfig, AIEResponse, ChatMessage } from './types.js'
 
 export interface HandlerRequest {
   headers?: Record<string, string | string[] | undefined>
@@ -17,6 +17,7 @@ export interface HandlerRequest {
     action?: string
     toolName?: string
     params?: Record<string, unknown>
+    history?: ChatMessage[]
   }
 }
 
@@ -27,7 +28,7 @@ export interface HandlerResponse {
 export interface AIEngine {
   processMessage(
     message: string,
-    options?: { authToken?: string; userId?: string },
+    options?: { authToken?: string; userId?: string; history?: ChatMessage[] },
   ): Promise<AIEResponse>
   confirmAndExecute(
     toolName: string,
@@ -47,6 +48,14 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   const rateLimiter = new RateLimiter(config.rateLimiting ?? {})
   const logger = new Logger()
 
+  const maxHistory = config.history?.maxMessages ?? 10
+
+  function trimHistory(history: ChatMessage[] | undefined): ChatMessage[] {
+    if (!history || history.length === 0) return []
+    if (history.length <= maxHistory) return history
+    return history.slice(-maxHistory)
+  }
+
   let provider: LLMProvider = new ClaudeProvider(
     config.llm.apiKey ?? '',
     config.llm.model,
@@ -60,7 +69,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
 
   async function processMessage(
     message: string,
-    options?: { authToken?: string; userId?: string },
+    options?: { authToken?: string; userId?: string; history?: ChatMessage[] },
   ): Promise<AIEResponse> {
     const startMs = Date.now()
     const rateLimitKey = options?.userId ?? 'global'
@@ -75,7 +84,8 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     let resolvedParams: Record<string, unknown> | null = null
 
     try {
-      const llmResponse = await resolver.resolve(message)
+      const trimmedHistory = trimHistory(options?.history)
+      const llmResponse = await resolver.resolve(message, trimmedHistory)
       llmTokensIn = llmResponse.tokensIn
       llmTokensOut = llmResponse.tokensOut
 
@@ -271,7 +281,8 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
 
         const message: string = req.body?.message ?? ''
         const userId: string | undefined = req.body?.userId
-        const result = await processMessage(message, { authToken, userId })
+        const history = req.body?.history
+        const result = await processMessage(message, { authToken, userId, history })
         res.json(result)
       } catch (err) {
         logger.error('handler error', err)

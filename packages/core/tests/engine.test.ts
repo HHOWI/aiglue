@@ -145,3 +145,102 @@ describe('createAIEngine', () => {
     expect(result.type).toBe('error')
   })
 })
+
+describe('createAIEngine — history passthrough', () => {
+  it('relays client-provided history to the resolver', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null,
+      textContent: 'ok',
+      tokensIn: 0,
+      tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    await engine.processMessage('follow-up', {
+      history: [
+        { role: 'user', content: 'prev q' },
+        { role: 'assistant', content: 'prev a' },
+      ],
+    })
+
+    const passedMessages = mockResolve.mock.calls[0][0]
+    const contents = passedMessages.map((m: { content: string }) => m.content)
+    expect(contents).toContain('prev q')
+    expect(contents).toContain('prev a')
+    expect(contents).toContain('follow-up')
+  })
+
+  it('trims history to maxMessages (default 10)', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    const longHistory = Array.from({ length: 14 }, (_, i) => ({
+      role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: `msg${i}`,
+    }))
+    await engine.processMessage('new', { history: longHistory })
+
+    const contents = mockResolve.mock.calls[0][0].map((m: { content: string }) => m.content)
+    expect(contents).not.toContain('msg0')
+    expect(contents).not.toContain('msg3')
+    expect(contents).toContain('msg4')
+    expect(contents).toContain('msg13')
+    expect(contents).toContain('new')
+  })
+
+  it('honors custom maxMessages from engine config', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+      history: { maxMessages: 2 },
+    })
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    await engine.processMessage('new', {
+      history: [
+        { role: 'user', content: 'q1' },
+        { role: 'assistant', content: 'a1' },
+        { role: 'user', content: 'q2' },
+        { role: 'assistant', content: 'a2' },
+      ],
+    })
+
+    const contents = mockResolve.mock.calls[0][0].map((m: { content: string }) => m.content)
+    expect(contents).not.toContain('q1')
+    expect(contents).not.toContain('a1')
+    expect(contents).toContain('q2')
+    expect(contents).toContain('a2')
+  })
+
+  it('works without history (backward compatible)', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: null, textContent: 'hi', tokensIn: 0, tokensOut: 0,
+      }),
+    })
+    const result = await engine.processMessage('hi')
+    expect(result.type).toBe('text')
+  })
+})
