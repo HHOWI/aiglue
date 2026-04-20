@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkPathKeyConsistency, checkConfirmMessageForWrites, checkTableColumns } from '../../src/validate/rules.js'
+import { checkPathKeyConsistency, checkConfirmMessageForWrites, checkTableColumns, checkUniqueNames } from '../../src/validate/rules.js'
 
 describe('rule: path-key-mismatch', () => {
   it('flags :id in endpoint when params lacks id', () => {
@@ -130,6 +130,27 @@ describe('rule: table-columns-required', () => {
       endpoint: 'GET /x',
       response_type: 'text',
     })
+    expect(errors).toEqual([])
+  })
+})
+
+describe('rule: duplicate-name', () => {
+  it('flags duplicate names across tools', () => {
+    const errors = checkUniqueNames([
+      { name: 'a', description: 'x', endpoint: 'GET /x' },
+      { name: 'b', description: 'x', endpoint: 'GET /y' },
+      { name: 'a', description: 'x', endpoint: 'GET /z' },
+    ])
+    expect(errors).toHaveLength(1)
+    expect(errors[0].rule).toBe('duplicate-name')
+    expect(errors[0].message).toContain('"a"')
+  })
+
+  it('passes with unique names', () => {
+    const errors = checkUniqueNames([
+      { name: 'a', description: 'x', endpoint: 'GET /x' },
+      { name: 'b', description: 'x', endpoint: 'GET /y' },
+    ])
     expect(errors).toEqual([])
   })
 })

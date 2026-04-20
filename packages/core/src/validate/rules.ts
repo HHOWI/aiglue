@@ -40,3 +40,17 @@ export function checkTableColumns(tool: ToolDefinition): LintError[] {
     message: 'response_type "table" requires a non-empty columns array',
   }]
 }
+
+export function checkUniqueNames(tools: ToolDefinition[]): LintError[] {
+  const seen = new Set<string>()
+  const duplicates = new Set<string>()
+  for (const tool of tools) {
+    if (seen.has(tool.name)) duplicates.add(tool.name)
+    else seen.add(tool.name)
+  }
+  return Array.from(duplicates).map(name => ({
+    path: 'tools',
+    rule: 'duplicate-name',
+    message: `duplicate tool name "${name}"`,
+  }))
+}

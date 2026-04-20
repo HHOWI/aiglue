@@ -7,7 +7,12 @@ import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import type { LintError, LintResult } from './types.js'
 import type { ToolsConfig } from '../types.js'
-import { checkPathKeyConsistency, checkConfirmMessageForWrites, checkTableColumns } from './rules.js'
+import {
+  checkPathKeyConsistency,
+  checkConfirmMessageForWrites,
+  checkTableColumns,
+  checkUniqueNames,
+} from './rules.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -45,6 +50,7 @@ function ajvErrorsToLint(errors: ErrorObject[] | null | undefined): LintError[] 
 
 function runSemanticRules(config: ToolsConfig): LintError[] {
   const errors: LintError[] = []
+  errors.push(...checkUniqueNames(config.tools ?? []))
   for (const tool of config.tools ?? []) {
     errors.push(...checkPathKeyConsistency(tool))
     errors.push(...checkConfirmMessageForWrites(tool))

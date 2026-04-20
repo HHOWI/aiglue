@@ -54,4 +54,10 @@ describe('lintFile', () => {
     expect(result.ok).toBe(false)
     expect(result.errors.some(e => e.rule === 'table-columns-required')).toBe(true)
   })
+
+  it('detects duplicate tool names', async () => {
+    const result = await lintFile(fx('lint-duplicate-name.yaml'))
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.rule === 'duplicate-name')).toBe(true)
+  })
 })
