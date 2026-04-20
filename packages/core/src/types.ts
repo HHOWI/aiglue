@@ -122,6 +122,12 @@ export interface AIEngineConfig {
   auth?: AuthConfig
   rateLimiting?: RateLimitConfig
   baseUrl?: string
+  history?: HistoryConfig
+}
+
+export interface HistoryConfig {
+  /** Maximum number of conversation messages to retain. Default 10. Oldest dropped first when exceeded. */
+  maxMessages?: number
 }
 
 export interface LLMConfig {

@@ -42,7 +42,10 @@ Build chat UI
 
 ```bash
 npm install @aiglue/core
+npx aiglue init     # Copies IDE AI skill + rule + tools.yaml skeleton
 ```
+
+After `init`, your IDE AI (Claude Code, Cursor) knows how to edit `tools.yaml` correctly. Run `npx aiglue lint tools.yaml` after edits.
 
 ### 2. Describe your APIs in `tools.yaml`
 
@@ -251,6 +254,94 @@ Turn your `tools.yaml` into a standalone MCP Server for Claude Desktop, OpenClaw
 npx aiglue generate-mcp --tools ./tools.yaml --output ./mcp-server/
 ```
 
+## Examples by backend framework
+
+Not using Claude Code or Cursor? Copy one of these starting points and adjust.
+
+### Express (Node.js)
+
+```yaml
+tools_yaml_version: "1.0"
+tools:
+  - name: list_posts
+    description: "블로그 글 목록 조회"
+    endpoint: GET /api/posts
+    params:
+      authorId:
+        description: "작성자 ID"
+        type: string
+        required: false
+    response_type: table
+    risk_level: read
+    columns:
+      - { key: "id", label: "ID" }
+      - { key: "title", label: "제목" }
+      - { key: "createdAt", label: "작성일", type: "date" }
+
+  - name: delete_post
+    description: "블로그 글 삭제"
+    endpoint: DELETE /api/posts/:id
+    params:
+      id:
+        description: "글 ID"
+        type: string
+        required: true
+    risk_level: critical
+    confirm_message: "이 글을 삭제합니다. 되돌릴 수 없습니다."
+```
+
+### FastAPI (Python)
+
+```yaml
+tools_yaml_version: "1.0"
+tools:
+  - name: query_orders
+    description: "주문 내역 조회. 기간·상태별 필터 가능."
+    endpoint: POST /api/orders/query
+    request_body_template:
+      page: 1
+      pageSize: 50
+    params:
+      status:
+        description: "주문 상태"
+        type: string
+        required: false
+        enum: [pending, paid, shipped, cancelled]
+    response_mapping:
+      data_path: "items"
+      total_path: "total"
+    response_type: table
+    risk_level: read
+    columns:
+      - { key: "orderId", label: "주문번호" }
+      - { key: "status", label: "상태", type: "badge" }
+      - { key: "amount", label: "금액", type: "number" }
+```
+
+### Spring (Java)
+
+```yaml
+tools_yaml_version: "1.0"
+tools:
+  - name: update_user_role
+    description: "사용자 권한 변경"
+    endpoint: PUT /api/users/:userId/role
+    params:
+      userId:
+        description: "사용자 ID"
+        type: string
+        required: true
+      role:
+        description: "부여할 권한"
+        type: string
+        required: true
+        enum: [admin, member, viewer]
+    risk_level: write
+    confirm_message: "사용자 권한을 변경합니다. 계속할까요?"
+```
+
+Use `npx aiglue lint tools.yaml` after editing to catch mistakes.
+
 ## tools.yaml Reference
 
 ```yaml
@@ -313,6 +404,9 @@ aiglue runs as a sidecar process alongside your existing backend:
 
 - [x] Core Engine (tools.yaml parser, intent resolver, executor)
 - [x] Claude provider
+- [x] `tools.yaml` JSON Schema (IDE autocomplete, LLM authoring accuracy)
+- [x] `npx aiglue lint` (schema + semantic validation CLI)
+- [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` skeleton)
 - [ ] OpenAI-compatible provider (GPT, Ollama, vLLM)
 - [ ] `@aiglue/client` (React/Vue hooks)
 - [ ] `@aiglue/mcp` (MCP Server)

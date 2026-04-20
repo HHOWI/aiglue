@@ -14,4 +14,9 @@ export type {
   ToolDefinition,
   LLMConfig,
   AuthConfig,
+  ChatMessage,
+  HistoryConfig,
 } from './types.js'
+
+export { lintFile } from './validate/lint.js'
+export type { LintError, LintResult } from './validate/types.js'

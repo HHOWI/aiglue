@@ -1,0 +1,4 @@
+tools_yaml_version: "1.0"
+tools:
+  - name: no_description
+    endpoint: GET /api/items
