@@ -6,6 +6,7 @@ import { IntentResolver } from './intent-resolver.js'
 import { SafetyGate } from './safety.js'
 import { Executor } from './executor.js'
 import { ResponseFormatter } from './response-formatter.js'
+import { Summarizer } from './summarizer.js'
 import { RateLimiter } from './rate-limiter.js'
 import { Logger } from './logger.js'
 import type { AIEngineConfig, AIEResponse, ChatMessage } from './types.js'
@@ -69,9 +70,11 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   }
 
   let resolver = new IntentResolver(provider, registry)
+  let summarizer = new Summarizer(provider)
 
   function rebuildResolver(): void {
     resolver = new IntentResolver(provider, registry)
+    summarizer = new Summarizer(provider)
   }
 
   async function processMessage(
@@ -177,7 +180,13 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       }
 
       const tool = registry.getTool(toolName)!
-      const response = formatter.format(tool, executionResult.data)
+      const base = formatter.format(tool, executionResult.data)
+      const response = await summarizer.maybeSummarize(
+        tool,
+        message,
+        executionResult.data,
+        base,
+      )
 
       logger.log({
         timestamp: new Date().toISOString(),
