@@ -107,9 +107,10 @@ processMessage(userText, { authToken, userId, history })
 
 - 구현됨:
   - 코어 엔진 (parser/resolver/executor/formatter), Claude 프로바이더, 화이트리스트 기반 safety, rate limiter, confirm 플로우
+  - `openai-compatible` 프로바이더 (`OpenAIProvider` — OpenAI, Groq, Together AI, Mistral, DeepSeek, Qwen(DashScope), OpenRouter, LiteLLM, Ollama, LM Studio, llama.cpp, vLLM, LocalAI 등). `config.llm.provider`로 분기. `apiKey` optional, `model` 필수, `baseUrl` optional. 설계: `docs/superpowers/specs/2026-04-24-openai-compatible-provider-design.md`
   - `tools.yaml` JSON Schema (`packages/core/schema/`)
   - `aiglue lint` CLI — schema + 5 semantic rules, human·`--json` 출력
   - `aiglue init` CLI — Claude skill·Cursor rule·tools.yaml 스켈레톤 배포
   - 엔진 stateless history 릴레이 (default 10개 윈도우)
   - README 프레임워크 예시 카탈로그 (Express / FastAPI / Spring)
-- 미구현(의도적 공백): `openai-compatible` 프로바이더 분기 (`LLMConfig.provider` 타입에는 있지만 엔진이 항상 `ClaudeProvider`를 생성), `@aiglue/client`, `@aiglue/mcp`, `npx aiglue generate-mcp`, `npx aiglue import-openapi` (1.5차), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로. 설계 결정은 `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md` 참고.
+- 미구현(의도적 공백): `@aiglue/client`, `@aiglue/mcp`, `npx aiglue generate-mcp`, `npx aiglue import-openapi` (1.5차), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로. 설계 결정은 `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md` 참고.

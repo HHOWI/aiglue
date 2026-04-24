@@ -201,18 +201,36 @@ const engine = createAIEngine({
 
 ### 멀티 LLM 지원
 
-```yaml
-# 클라우드
-llm:
-  provider: claude
-  apiKey: ${ANTHROPIC_API_KEY}
+aiglue는 두 개의 프로바이더를 내장한다. `openai-compatible`은 OpenAI Chat Completions API(function calling 포함)를 구현한 모든 엔드포인트에서 동작: OpenAI, Groq, Together AI, Mistral, DeepSeek, Alibaba DashScope(Qwen), OpenRouter, LiteLLM 프록시, 그리고 로컬 런너(Ollama, LM Studio, llama.cpp server, vLLM, LocalAI).
 
-# 로컬 (Ollama, vLLM, LM Studio)
-llm:
-  provider: openai-compatible
-  baseUrl: http://localhost:11434/v1
-  model: llama3
+```ts
+// Claude (Anthropic)
+llm: { provider: 'claude', apiKey: process.env.ANTHROPIC_API_KEY }
+
+// OpenAI
+llm: {
+  provider: 'openai-compatible',
+  apiKey: process.env.OPENAI_API_KEY,
+  model: 'gpt-4o-mini',
+}
+
+// 로컬, API 키 불필요 — Ollama + Qwen
+llm: {
+  provider: 'openai-compatible',
+  model: 'qwen2.5:7b',
+  baseUrl: 'http://localhost:11434/v1',
+}
+
+// Groq — 빠른 클라우드 추론
+llm: {
+  provider: 'openai-compatible',
+  apiKey: process.env.GROQ_API_KEY,
+  model: 'llama-3.3-70b-versatile',
+  baseUrl: 'https://api.groq.com/openai/v1',
+}
 ```
+
+Function calling 품질은 모델에 따라 편차가 있다 — 안정적인 tool 호출을 위해 instruction-tuned 7B 이상 모델 권장. `openai-compatible`에서 `model`은 필수, `apiKey`는 선택(로컬 런너는 불필요).
 
 ### Auto 모드 (AI 응답 포맷팅)
 
@@ -405,7 +423,7 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] `tools.yaml` JSON Schema (IDE 자동완성·LLM 작성 정확도 확보)
 - [x] `npx aiglue lint` (스키마 + 시맨틱 검증 CLI)
 - [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` 스켈레톤)
-- [ ] OpenAI 호환 Provider (GPT, Ollama, vLLM)
+- [x] OpenAI 호환 Provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM 등)
 - [ ] `@aiglue/client` (React/Vue hooks)
 - [ ] `@aiglue/mcp` (MCP Server)
 - [ ] `npx aiglue generate-mcp`

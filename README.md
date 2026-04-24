@@ -203,18 +203,36 @@ const engine = createAIEngine({
 
 ### Multi-LLM Support
 
-```yaml
-# Cloud
-llm:
-  provider: claude
-  apiKey: ${ANTHROPIC_API_KEY}
+aiglue ships two built-in providers. `openai-compatible` works with any endpoint that implements the OpenAI Chat Completions API with function calling: OpenAI, Groq, Together AI, Mistral, DeepSeek, Alibaba DashScope (Qwen), OpenRouter, LiteLLM proxy, and local runners (Ollama, LM Studio, llama.cpp server, vLLM, LocalAI).
 
-# Local (Ollama, vLLM, LM Studio)
-llm:
-  provider: openai-compatible
-  baseUrl: http://localhost:11434/v1
-  model: llama3
+```ts
+// Claude (Anthropic)
+llm: { provider: 'claude', apiKey: process.env.ANTHROPIC_API_KEY }
+
+// OpenAI
+llm: {
+  provider: 'openai-compatible',
+  apiKey: process.env.OPENAI_API_KEY,
+  model: 'gpt-4o-mini',
+}
+
+// Local, no API key — Ollama with Qwen
+llm: {
+  provider: 'openai-compatible',
+  model: 'qwen2.5:7b',
+  baseUrl: 'http://localhost:11434/v1',
+}
+
+// Groq — fast cloud inference
+llm: {
+  provider: 'openai-compatible',
+  apiKey: process.env.GROQ_API_KEY,
+  model: 'llama-3.3-70b-versatile',
+  baseUrl: 'https://api.groq.com/openai/v1',
+}
 ```
+
+Function calling quality depends on the model — prefer instruction-tuned models ≥7B for reliable tool use. `model` is required for `openai-compatible`; `apiKey` is optional (local runners don't need one).
 
 ### Auto Mode (AI-Powered Response Formatting)
 
@@ -407,7 +425,7 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] `tools.yaml` JSON Schema (IDE autocomplete, LLM authoring accuracy)
 - [x] `npx aiglue lint` (schema + semantic validation CLI)
 - [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` skeleton)
-- [ ] OpenAI-compatible provider (GPT, Ollama, vLLM)
+- [x] OpenAI-compatible provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM, etc.)
 - [ ] `@aiglue/client` (React/Vue hooks)
 - [ ] `@aiglue/mcp` (MCP Server)
 - [ ] `npx aiglue generate-mcp`
