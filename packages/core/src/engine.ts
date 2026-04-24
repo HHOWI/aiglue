@@ -1,5 +1,6 @@
 import { ToolRegistry } from './tool-registry.js'
 import { ClaudeProvider } from './providers/claude.js'
+import { OpenAIProvider } from './providers/openai.js'
 import type { LLMProvider } from './providers/types.js'
 import { IntentResolver } from './intent-resolver.js'
 import { SafetyGate } from './safety.js'
@@ -56,10 +57,16 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     return history.slice(-maxHistory)
   }
 
-  let provider: LLMProvider = new ClaudeProvider(
-    config.llm.apiKey ?? '',
-    config.llm.model,
-  )
+  let provider: LLMProvider
+  if (config.llm.provider === 'openai-compatible') {
+    provider = new OpenAIProvider({
+      apiKey: config.llm.apiKey,
+      model: config.llm.model ?? '',
+      baseUrl: config.llm.baseUrl,
+    })
+  } else {
+    provider = new ClaudeProvider(config.llm.apiKey ?? '', config.llm.model)
+  }
 
   let resolver = new IntentResolver(provider, registry)
 
