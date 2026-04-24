@@ -1,0 +1,7 @@
+tools_yaml_version: "1.0"
+tools:
+  - name: bad_include_summary
+    description: "Has include_summary but not table"
+    endpoint: GET /api/x
+    response_type: text
+    include_summary: true

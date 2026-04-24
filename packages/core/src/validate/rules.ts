@@ -54,3 +54,13 @@ export function checkUniqueNames(tools: ToolDefinition[]): LintError[] {
     message: `duplicate tool name "${name}"`,
   }))
 }
+
+export function checkIncludeSummaryRequiresTable(tool: ToolDefinition): LintError[] {
+  if (!tool.include_summary) return []
+  if (tool.response_type === 'table') return []
+  return [{
+    path: `tools[${tool.name}]`,
+    rule: 'summary-requires-table',
+    message: 'include_summary: true requires response_type: "table"',
+  }]
+}

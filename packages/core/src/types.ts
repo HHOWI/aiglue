@@ -14,7 +14,10 @@ export interface ToolDefinition {
   response_mapping?: ResponseMapping
   columns?: ColumnDefinition[]
   examples?: string[]
-  response_type?: 'text' | 'table' | 'raw' | 'chart' | 'auto'
+  response_type?: 'text' | 'table' | 'raw' | 'summary' | 'chart' | 'auto'
+  /** When true on a `response_type: table` tool, adds an LLM-generated summary string
+   *  to the AIETableResponse. Ignored for other response types. */
+  include_summary?: boolean
   risk_level?: 'read' | 'write' | 'critical'
   confirm_message?: string
   rate_limit?: string
@@ -46,6 +49,7 @@ export type AIEResponse =
   | AIETextResponse
   | AIETableResponse
   | AIERawResponse
+  | AIESummaryResponse
   | AIEActionResponse
   | AIEConfirmResponse
   | AIEClarifyResponse
@@ -67,6 +71,13 @@ export interface AIETableResponse {
 export interface AIERawResponse {
   type: 'raw'
   data: unknown
+}
+
+export interface AIESummaryResponse {
+  type: 'summary'
+  text: string
+  /** Original tool result, exposed for "show details" UIs. Optional and opaque. */
+  source?: unknown
 }
 
 export interface AIEActionResponse {

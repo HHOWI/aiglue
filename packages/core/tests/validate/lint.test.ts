@@ -60,4 +60,10 @@ describe('lintFile', () => {
     expect(result.ok).toBe(false)
     expect(result.errors.some(e => e.rule === 'duplicate-name')).toBe(true)
   })
+
+  it('reports summary-requires-table when include_summary is set without response_type: table', async () => {
+    const result = await lintFile(fx('lint-include-summary-wrong-type.yaml'))
+    expect(result.ok).toBe(false)
+    expect(result.errors.some(e => e.rule === 'summary-requires-table')).toBe(true)
+  })
 })

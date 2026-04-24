@@ -46,7 +46,12 @@
         },
         "response_type": {
           "type": "string",
-          "enum": ["text", "table", "raw", "chart", "auto"]
+          "enum": ["text", "table", "raw", "summary", "chart", "auto"]
+        },
+        "include_summary": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true on a response_type: table tool, injects an LLM-generated summary string into the response."
         },
         "risk_level": {
           "type": "string",

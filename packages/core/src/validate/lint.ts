@@ -12,6 +12,7 @@ import {
   checkConfirmMessageForWrites,
   checkTableColumns,
   checkUniqueNames,
+  checkIncludeSummaryRequiresTable,
 } from './rules.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -55,6 +56,7 @@ function runSemanticRules(config: ToolsConfig): LintError[] {
     errors.push(...checkPathKeyConsistency(tool))
     errors.push(...checkConfirmMessageForWrites(tool))
     errors.push(...checkTableColumns(tool))
+    errors.push(...checkIncludeSummaryRequiresTable(tool))
   }
   return errors
 }
