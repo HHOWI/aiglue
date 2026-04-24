@@ -60,8 +60,9 @@ description: Use when authoring or editing aiglue tools.yaml — the file that m
 - `critical` — 쓰기와 동일한 확인 요구. 되돌리기 불가능한 작업(삭제 등)에 사용
 
 ### `response_type`
-- `text` (기본값)
+- `text` (기본값) — 짧은 메시지 응답
 - `table` — 반드시 `columns` 정의
+- `raw` — API 응답을 구조 그대로 전달. 프론트에 이미 있는 그리드·차트 컴포넌트가 그 응답을 바로 렌더할 수 있을 때 선택
 - `chart`·`auto`는 현재 런타임에서 미구현 → 사용하지 말 것
 
 ### `response_mapping` (선택, response_type=table일 때 유용)

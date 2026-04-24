@@ -116,4 +116,42 @@ describe('ResponseFormatter', () => {
       expect(result.rows).toHaveLength(2)
     }
   })
+
+  it('should passthrough API response when response_type is raw', () => {
+    const rawTool: ToolDefinition = {
+      name: 'get_dashboard',
+      description: 'Dashboard payload handled by frontend grid',
+      endpoint: 'GET /api/dashboard',
+      response_type: 'raw',
+    }
+    const apiResponse = {
+      items: [{ id: 1, name: 'Alice' }],
+      meta: { total: 1, page: 1 },
+      chartSeries: [10, 20, 30],
+    }
+    const result = formatter.format(rawTool, apiResponse)
+    expect(result.type).toBe('raw')
+    if (result.type === 'raw') {
+      expect(result.data).toBe(apiResponse)
+    }
+  })
+
+  it('preserves arbitrary shapes (array, primitive) for raw', () => {
+    const rawTool: ToolDefinition = {
+      name: 'anything',
+      description: 'Anything',
+      endpoint: 'GET /api/anything',
+      response_type: 'raw',
+    }
+    const arrayResult = formatter.format(rawTool, [1, 2, 3])
+    expect(arrayResult.type).toBe('raw')
+    if (arrayResult.type === 'raw') {
+      expect(arrayResult.data).toEqual([1, 2, 3])
+    }
+    const stringResult = formatter.format(rawTool, 'hello')
+    expect(stringResult.type).toBe('raw')
+    if (stringResult.type === 'raw') {
+      expect(stringResult.data).toBe('hello')
+    }
+  })
 })

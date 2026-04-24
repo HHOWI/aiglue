@@ -6,6 +6,7 @@ export type {
   AIEResponse,
   AIETextResponse,
   AIETableResponse,
+  AIERawResponse,
   AIEActionResponse,
   AIEConfirmResponse,
   AIEClarifyResponse,

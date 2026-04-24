@@ -257,6 +257,7 @@ aiglue는 구조화된 JSON을 반환합니다. 렌더링은 개발자가 자유
 |-----------|------|
 | `text` | 단순 메시지 |
 | `table` | 컬럼 + 행 데이터 |
+| `raw` | 기존 API 응답을 그대로 전달 — 프론트의 기존 컴포넌트가 처리 |
 | `chart` | 차트 타입 + 시리즈 데이터 |
 | `action` | 작업 성공/실패 결과 |
 | `confirm` | 사용자 승인 필요 |
@@ -386,7 +387,7 @@ tools:
     examples:                     # 자연어 예시 (정확도 향상)
       - "전체 항목 보여줘"
       - "활성 사용자 목록"
-    response_type: table          # text | table | chart | auto
+    response_type: table          # text | table | raw | chart | auto
     risk_level: read              # read | write | critical
     confirm_message: "진행할까요?"  # write/critical일 때 표시
     rate_limit: "10/min"          # Tool별 요청 제한

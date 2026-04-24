@@ -259,6 +259,7 @@ aiglue returns structured JSON. You render it however you want:
 |---------------|--------------|
 | `text` | Simple message |
 | `table` | Columns + rows |
+| `raw` | Original API response passed through untouched — render with your existing component |
 | `chart` | Chart type + series data |
 | `action` | Success/failure result |
 | `confirm` | Needs user approval |
@@ -388,7 +389,7 @@ tools:
     examples:                     # Natural language examples (improves accuracy)
       - "Show me all items"
       - "List active users"
-    response_type: table          # text | table | chart | auto
+    response_type: table          # text | table | raw | chart | auto
     risk_level: read              # read | write | critical
     confirm_message: "Proceed?"   # Shown for write/critical
     rate_limit: "10/min"          # Per-tool rate limit

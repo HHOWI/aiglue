@@ -46,7 +46,7 @@
         },
         "response_type": {
           "type": "string",
-          "enum": ["text", "table", "chart", "auto"]
+          "enum": ["text", "table", "raw", "chart", "auto"]
         },
         "risk_level": {
           "type": "string",

@@ -1,4 +1,10 @@
-import type { ToolDefinition, AIEResponse, AIETextResponse, AIETableResponse } from './types.js'
+import type {
+  ToolDefinition,
+  AIEResponse,
+  AIETextResponse,
+  AIETableResponse,
+  AIERawResponse,
+} from './types.js'
 
 export class ResponseFormatter {
   format(tool: ToolDefinition, apiResponse: unknown): AIEResponse {
@@ -7,10 +13,16 @@ export class ResponseFormatter {
     switch (responseType) {
       case 'table':
         return this.formatTable(tool, apiResponse)
+      case 'raw':
+        return this.formatRaw(apiResponse)
       case 'text':
       default:
         return this.formatText(apiResponse)
     }
+  }
+
+  private formatRaw(apiResponse: unknown): AIERawResponse {
+    return { type: 'raw', data: apiResponse }
   }
 
   private formatTable(tool: ToolDefinition, apiResponse: unknown): AIETableResponse {

@@ -14,7 +14,7 @@ export interface ToolDefinition {
   response_mapping?: ResponseMapping
   columns?: ColumnDefinition[]
   examples?: string[]
-  response_type?: 'text' | 'table' | 'chart' | 'auto'
+  response_type?: 'text' | 'table' | 'raw' | 'chart' | 'auto'
   risk_level?: 'read' | 'write' | 'critical'
   confirm_message?: string
   rate_limit?: string
@@ -45,6 +45,7 @@ export interface ColumnDefinition {
 export type AIEResponse =
   | AIETextResponse
   | AIETableResponse
+  | AIERawResponse
   | AIEActionResponse
   | AIEConfirmResponse
   | AIEClarifyResponse
@@ -61,6 +62,11 @@ export interface AIETableResponse {
   rows: Record<string, unknown>[]
   total?: number
   summary?: string
+}
+
+export interface AIERawResponse {
+  type: 'raw'
+  data: unknown
 }
 
 export interface AIEActionResponse {
