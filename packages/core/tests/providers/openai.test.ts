@@ -234,4 +234,82 @@ describe('OpenAIProvider', () => {
     expect(result.tokensOut).toBe(0)
     await server.close()
   })
+
+  it('chat() returns text + token usage', async () => {
+    const server = await startMockServer({
+      choices: [
+        { message: { role: 'assistant', content: 'Alice는 admin입니다.' }, finish_reason: 'stop' },
+      ],
+      usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18 },
+    })
+    const provider = new OpenAIProvider({
+      apiKey: 'test',
+      model: 'gpt-4o-mini',
+      baseUrl: server.url,
+    })
+    const result = await provider.chat(
+      [{ role: 'user', content: '요약해줘' }],
+    )
+    expect(result.text).toBe('Alice는 admin입니다.')
+    expect(result.tokensIn).toBe(12)
+    expect(result.tokensOut).toBe(6)
+    await server.close()
+  })
+
+  it('chat() sends system prompt and max_tokens when provided', async () => {
+    const server = await startMockServer({
+      choices: [{ message: { role: 'assistant', content: 'ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    })
+    const provider = new OpenAIProvider({
+      apiKey: 'test',
+      model: 'gpt-4o-mini',
+      baseUrl: server.url,
+    })
+    await provider.chat(
+      [{ role: 'user', content: 'hi' }],
+      { system: 'You are a summarizer.', maxTokens: 300 },
+    )
+    const body = JSON.parse(server.lastBody())
+    expect(body.max_tokens).toBe(300)
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'You are a summarizer.' })
+    expect(body.messages[1]).toEqual({ role: 'user', content: 'hi' })
+    expect(body.tools).toBeUndefined()
+    await server.close()
+  })
+
+  it('chat() defaults max_tokens to 1024 and preserves system message from array', async () => {
+    const server = await startMockServer({
+      choices: [{ message: { role: 'assistant', content: 'ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    })
+    const provider = new OpenAIProvider({
+      apiKey: 'test',
+      model: 'gpt-4o-mini',
+      baseUrl: server.url,
+    })
+    await provider.chat([
+      { role: 'system', content: 'existing system' },
+      { role: 'user', content: 'hi' },
+    ])
+    const body = JSON.parse(server.lastBody())
+    expect(body.max_tokens).toBe(1024)
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'existing system' })
+    await server.close()
+  })
+
+  it('chat() returns empty text when model produces no content', async () => {
+    const server = await startMockServer({
+      choices: [{ message: { role: 'assistant', content: null } }],
+      usage: { prompt_tokens: 1, completion_tokens: 0 },
+    })
+    const provider = new OpenAIProvider({
+      apiKey: 'test',
+      model: 'gpt-4o-mini',
+      baseUrl: server.url,
+    })
+    const result = await provider.chat([{ role: 'user', content: 'hi' }])
+    expect(result.text).toBe('')
+    await server.close()
+  })
 })

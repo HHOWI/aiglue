@@ -1,5 +1,5 @@
 import OpenAI from 'openai'
-import type { LLMProvider } from './types.js'
+import type { LLMProvider, ChatOptions, ChatResponse } from './types.js'
 import type { ChatMessage, LLMToolDefinition, LLMResponse } from '../types.js'
 
 export interface OpenAIProviderConfig {
@@ -83,6 +83,43 @@ export class OpenAIProvider implements LLMProvider {
     return {
       toolCall,
       textContent,
+      tokensIn: response.usage?.prompt_tokens ?? 0,
+      tokensOut: response.usage?.completion_tokens ?? 0,
+    }
+  }
+
+  async chat(
+    messages: ChatMessage[],
+    opts?: ChatOptions,
+  ): Promise<ChatResponse> {
+    const baseMessages = messages.map(
+      (m): OpenAI.Chat.Completions.ChatCompletionMessageParam => {
+        switch (m.role) {
+          case 'system':
+            return { role: 'system', content: m.content }
+          case 'user':
+            return { role: 'user', content: m.content }
+          case 'assistant':
+            return { role: 'assistant', content: m.content }
+        }
+      },
+    )
+
+    const openaiMessages = opts?.system
+      ? [
+          { role: 'system' as const, content: opts.system },
+          ...baseMessages.filter((m) => m.role !== 'system'),
+        ]
+      : baseMessages
+
+    const response = await this.client.chat.completions.create({
+      model: this.model,
+      messages: openaiMessages,
+      max_tokens: opts?.maxTokens ?? 1024,
+    })
+
+    return {
+      text: response.choices[0]?.message?.content ?? '',
       tokensIn: response.usage?.prompt_tokens ?? 0,
       tokensOut: response.usage?.completion_tokens ?? 0,
     }

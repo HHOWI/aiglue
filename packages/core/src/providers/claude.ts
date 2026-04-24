@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { LLMProvider } from './types.js'
+import type { LLMProvider, ChatOptions, ChatResponse } from './types.js'
 import type { ChatMessage, LLMToolDefinition, LLMResponse } from '../types.js'
 
 export class ClaudeProvider implements LLMProvider {
@@ -54,6 +54,33 @@ export class ClaudeProvider implements LLMProvider {
     return {
       toolCall,
       textContent,
+      tokensIn: response.usage.input_tokens,
+      tokensOut: response.usage.output_tokens,
+    }
+  }
+
+  async chat(
+    messages: ChatMessage[],
+    opts?: ChatOptions,
+  ): Promise<ChatResponse> {
+    const systemFromMessages = messages.find((m) => m.role === 'system')?.content
+    const chatMessages = messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }))
+
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: opts?.maxTokens ?? 1024,
+      system: opts?.system ?? systemFromMessages,
+      messages: chatMessages,
+    })
+
+    const textBlock = response.content.find((b) => b.type === 'text')
+    return {
+      text: textBlock && textBlock.type === 'text' ? textBlock.text : '',
       tokensIn: response.usage.input_tokens,
       tokensOut: response.usage.output_tokens,
     }
