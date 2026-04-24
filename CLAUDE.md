@@ -108,6 +108,7 @@ processMessage(userText, { authToken, userId, history })
 - 구현됨:
   - 코어 엔진 (parser/resolver/executor/formatter), Claude 프로바이더, 화이트리스트 기반 safety, rate limiter, confirm 플로우
   - `openai-compatible` 프로바이더 (`OpenAIProvider` — OpenAI, Groq, Together AI, Mistral, DeepSeek, Qwen(DashScope), OpenRouter, LiteLLM, Ollama, LM Studio, llama.cpp, vLLM, LocalAI 등). `config.llm.provider`로 분기. `apiKey` optional, `model` 필수, `baseUrl` optional. 설계: `docs/superpowers/specs/2026-04-24-openai-compatible-provider-design.md`
+  - `response_type: summary` + `include_summary` (LLM 자연어 요약 / table+summary 동시). `LLMProvider.chat()` 프리미티브 추가(Claude·OpenAI 양쪽 구현). 파이프라인 5.5단계에 `Summarizer` 독립 컴포넌트, max_tokens 300 hard cap, graceful fallback(요약 실패 시 text로 degrade, 전체 실패 없음). lint 규칙 `summary-requires-table`. 설계: `docs/superpowers/specs/2026-04-24-summary-response-type-design.md`
   - `tools.yaml` JSON Schema (`packages/core/schema/`)
   - `aiglue lint` CLI — schema + 5 semantic rules, human·`--json` 출력
   - `aiglue init` CLI — Claude skill·Cursor rule·tools.yaml 스켈레톤 배포

@@ -63,7 +63,12 @@ description: Use when authoring or editing aiglue tools.yaml — the file that m
 - `text` (기본값) — 짧은 메시지 응답
 - `table` — 반드시 `columns` 정의
 - `raw` — API 응답을 구조 그대로 전달. 프론트에 이미 있는 그리드·차트 컴포넌트가 그 응답을 바로 렌더할 수 있을 때 선택
+- `summary` — LLM이 자연어로 요약. 프로필·상태 조회처럼 사용자에게 풀어서 말해주고 싶을 때. LLM 2차 호출 발생(토큰 ~300 추가)
 - `chart`·`auto`는 현재 런타임에서 미구현 → 사용하지 말 것
+
+### `include_summary` (선택, `response_type: table` 전용)
+- `true`로 설정하면 테이블 응답에 한 줄짜리 LLM 요약 문장(`summary` 필드)이 추가됨
+- `response_type: table`이 아닌 곳에 쓰면 lint에서 `summary-requires-table` 에러
 
 ### `response_mapping` (선택, response_type=table일 때 유용)
 - API 응답이 `{ data: { list: [...], total: N } }` 형태이면:

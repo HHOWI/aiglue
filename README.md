@@ -259,6 +259,7 @@ aiglue returns structured JSON. You render it however you want:
 |---------------|--------------|
 | `text` | Simple message |
 | `table` | Columns + rows |
+| `summary` | LLM-generated natural language summary of the tool result — use for profile/status-like responses |
 | `raw` | Original API response passed through untouched — render with your existing component |
 | `chart` | Chart type + series data |
 | `action` | Success/failure result |
@@ -389,11 +390,34 @@ tools:
     examples:                     # Natural language examples (improves accuracy)
       - "Show me all items"
       - "List active users"
-    response_type: table          # text | table | raw | chart | auto
+    response_type: table          # text | table | raw | summary | chart | auto
+    include_summary: true         # Only with response_type: table — adds an LLM summary sentence
     risk_level: read              # read | write | critical
     confirm_message: "Proceed?"   # Shown for write/critical
     rate_limit: "10/min"          # Per-tool rate limit
 ```
+
+### Natural language summaries
+
+Set `response_type: summary` to get an LLM-generated natural-language description of the tool result instead of raw JSON. Combine with a table by adding `include_summary: true`:
+
+```yaml
+- name: get_user_info
+  description: "Fetch user profile"
+  endpoint: GET /api/users/:id
+  response_type: summary           # Chatbot-style reply: "Alice is an admin since 2020"
+
+- name: list_sales
+  description: "Weekly sales"
+  endpoint: GET /api/sales
+  response_type: table
+  include_summary: true            # Table + one-sentence summary
+  columns:
+    - { key: "date", label: "Date" }
+    - { key: "total", label: "Total" }
+```
+
+aiglue makes a second LLM call (capped at 300 tokens) to produce the summary. If the call fails, the response degrades to `type: 'text'` (summary-only) or returns the table without the summary field — the request never fails solely because summarization failed.
 
 ## Non-Node.js Backends (Java, Python, etc.)
 

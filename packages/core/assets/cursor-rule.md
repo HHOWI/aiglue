@@ -29,7 +29,7 @@ alwaysApply: false
 npx aiglue lint tools.yaml
 ```
 
-lint 에러 룰 카탈로그: `schema` · `path-key-mismatch` · `confirm-message-required` · `table-columns-required` · `duplicate-name`.
+lint 에러 룰 카탈로그: `schema` · `path-key-mismatch` · `confirm-message-required` · `table-columns-required` · `duplicate-name` · `summary-requires-table`.
 
 ## 사용자 피로 최소화
 

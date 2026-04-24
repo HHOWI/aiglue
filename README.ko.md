@@ -257,6 +257,7 @@ aiglue는 구조화된 JSON을 반환합니다. 렌더링은 개발자가 자유
 |-----------|------|
 | `text` | 단순 메시지 |
 | `table` | 컬럼 + 행 데이터 |
+| `summary` | LLM이 생성한 자연어 요약. 프로필·상태 조회처럼 풀어서 말해주고 싶을 때 |
 | `raw` | 기존 API 응답을 그대로 전달 — 프론트의 기존 컴포넌트가 처리 |
 | `chart` | 차트 타입 + 시리즈 데이터 |
 | `action` | 작업 성공/실패 결과 |
@@ -387,11 +388,34 @@ tools:
     examples:                     # 자연어 예시 (정확도 향상)
       - "전체 항목 보여줘"
       - "활성 사용자 목록"
-    response_type: table          # text | table | raw | chart | auto
+    response_type: table          # text | table | raw | summary | chart | auto
+    include_summary: true         # response_type: table 전용 — LLM 요약 문장 추가
     risk_level: read              # read | write | critical
     confirm_message: "진행할까요?"  # write/critical일 때 표시
     rate_limit: "10/min"          # Tool별 요청 제한
 ```
+
+### 자연어 요약
+
+`response_type: summary`를 지정하면 API 응답을 원본 JSON 대신 LLM이 생성한 자연어 문장으로 받는다. `response_type: table`과 `include_summary: true`를 조합하면 표 + 한 줄 요약을 동시에 반환한다.
+
+```yaml
+- name: get_user_info
+  description: "유저 프로필 조회"
+  endpoint: GET /api/users/:id
+  response_type: summary           # 챗봇 스타일 답변: "Alice는 2020년 가입한 admin입니다"
+
+- name: list_sales
+  description: "이번 주 매출"
+  endpoint: GET /api/sales
+  response_type: table
+  include_summary: true            # 표 + 한 줄 요약
+  columns:
+    - { key: "date", label: "날짜" }
+    - { key: "total", label: "금액" }
+```
+
+aiglue는 요약 생성을 위해 LLM을 2차 호출한다 (max_tokens 300 상한). 요약 호출이 실패하면 응답은 `type: 'text'`(summary 단독) 또는 summary 필드가 빠진 table로 graceful degrade — 요약 실패만으로 전체 요청이 실패하지 않는다.
 
 ## Node.js가 아닌 백엔드 (Java, Python 등)
 
