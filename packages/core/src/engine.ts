@@ -278,11 +278,16 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   function handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void> {
     return async (req: HandlerRequest, res: HandlerResponse): Promise<void> => {
       try {
-        const rawAuth = req.headers?.authorization
-        const authHeader: string | undefined = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth
-        const authToken = authHeader?.startsWith('Bearer ')
-          ? authHeader.slice(7)
-          : authHeader
+        const authToken: string | undefined = (() => {
+          if (config.auth?.token) {
+            return typeof config.auth.token === 'function'
+              ? (config.auth.token(req) ?? undefined)
+              : config.auth.token
+          }
+          const rawAuth = req.headers?.authorization
+          const authHeader: string | undefined = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth
+          return authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader
+        })()
 
         if (req.body?.action === 'confirm') {
           const { toolName, params } = req.body as {

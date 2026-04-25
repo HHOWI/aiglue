@@ -244,3 +244,112 @@ describe('createAIEngine — history passthrough', () => {
     expect(result.type).toBe('text')
   })
 })
+
+describe('createAIEngine — config.auth.token', () => {
+  it('passes token from auth.token function to downstream API', async () => {
+    const receivedHeaders: Record<string, string> = {}
+
+    const authTestServer = createServer((req, res) => {
+      if (req.url?.startsWith('/api/users') && req.method === 'GET') {
+        receivedHeaders['authorization'] = req.headers['authorization'] ?? ''
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify([{ id: '1', name: 'Alice', role: 'admin' }]))
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+
+    const authPort = await new Promise<number>((r) =>
+      authTestServer.listen(0, () => {
+        const addr = authTestServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      }),
+    )
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${authPort}`,
+      auth: {
+        type: 'bearer',
+        token: (req) => (req as { cookies?: { auth_token?: string } }).cookies?.auth_token,
+      },
+    })
+
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 'get_users', params: {} },
+        textContent: null,
+        tokensIn: 10,
+        tokensOut: 10,
+      }),
+    })
+
+    const handlerFn = engine.handler()
+    const mockReq = {
+      headers: {},
+      cookies: { auth_token: 'my-jwt-token' },
+      body: { message: '사용자 보여줘' },
+    }
+    const mockRes = { json: vi.fn() }
+
+    await handlerFn(mockReq as never, mockRes)
+
+    expect(receivedHeaders['authorization']).toBe('Bearer my-jwt-token')
+    await new Promise<void>((r) => authTestServer.close(() => r()))
+  })
+
+  it('passes static string token from auth.token string', async () => {
+    const receivedHeaders: Record<string, string> = {}
+
+    const authTestServer2 = createServer((req, res) => {
+      if (req.url?.startsWith('/api/users') && req.method === 'GET') {
+        receivedHeaders['authorization'] = req.headers['authorization'] ?? ''
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify([{ id: '1', name: 'Alice', role: 'admin' }]))
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+
+    const authPort2 = await new Promise<number>((r) =>
+      authTestServer2.listen(0, () => {
+        const addr = authTestServer2.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      }),
+    )
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${authPort2}`,
+      auth: {
+        type: 'bearer',
+        token: 'static-service-token',
+      },
+    })
+
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 'get_users', params: {} },
+        textContent: null,
+        tokensIn: 10,
+        tokensOut: 10,
+      }),
+    })
+
+    const handlerFn = engine.handler()
+    const mockReq = {
+      headers: {},
+      body: { message: '사용자 보여줘' },
+    }
+    const mockRes = { json: vi.fn() }
+
+    await handlerFn(mockReq as never, mockRes)
+
+    expect(receivedHeaders['authorization']).toBe('Bearer static-service-token')
+    await new Promise<void>((r) => authTestServer2.close(() => r()))
+  })
+})
