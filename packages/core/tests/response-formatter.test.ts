@@ -62,11 +62,20 @@ describe('ResponseFormatter', () => {
     expect(result.type).toBe('text')
   })
 
-  it('should handle response_mapping with missing path gracefully', () => {
+  it('should return error when data_path is not found in response', () => {
     const result = formatter.format(tableTool, { wrong: 'shape' })
-    expect(result.type).toBe('table')
-    if (result.type === 'table') {
-      expect(result.rows).toEqual([])
+    expect(result.type).toBe('error')
+    if (result.type === 'error') {
+      expect(result.code).toBe('DATA_PATH_NOT_FOUND')
+      expect(result.message).toContain('data_path')
+    }
+  })
+
+  it('should return error when data_path resolves to non-array', () => {
+    const result = formatter.format(tableTool, { data: { items: 'not-an-array' } })
+    expect(result.type).toBe('error')
+    if (result.type === 'error') {
+      expect(result.code).toBe('DATA_PATH_NOT_ARRAY')
     }
   })
 

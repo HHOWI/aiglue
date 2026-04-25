@@ -25,15 +25,25 @@ export class ResponseFormatter {
     return { type: 'raw', data: apiResponse }
   }
 
-  private formatTable(tool: ToolDefinition, apiResponse: unknown): AIETableResponse {
+  private formatTable(tool: ToolDefinition, apiResponse: unknown): AIEResponse {
     let rows: Record<string, unknown>[] = []
     let total: number | undefined
 
     if (tool.response_mapping?.data_path) {
       const extracted = this.getNestedValue(apiResponse, tool.response_mapping.data_path)
-      if (Array.isArray(extracted)) {
-        rows = extracted as Record<string, unknown>[]
+      if (extracted === undefined || extracted === null) {
+        return this.formatError(
+          `data_path "${tool.response_mapping.data_path}" not found in API response for tool "${tool.name}". Check response_mapping in tools.yaml.`,
+          'DATA_PATH_NOT_FOUND',
+        )
       }
+      if (!Array.isArray(extracted)) {
+        return this.formatError(
+          `data_path "${tool.response_mapping.data_path}" in tool "${tool.name}" resolved to ${typeof extracted}, expected array.`,
+          'DATA_PATH_NOT_ARRAY',
+        )
+      }
+      rows = extracted as Record<string, unknown>[]
     } else if (Array.isArray(apiResponse)) {
       rows = apiResponse as Record<string, unknown>[]
     }
