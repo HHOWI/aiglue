@@ -2,9 +2,8 @@ import { readFile } from 'fs/promises'
 import { parse } from 'yaml'
 import Ajv, { type ErrorObject } from 'ajv'
 import addFormats from 'ajv-formats'
-import { resolve } from 'path'
+import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import type { LintError, LintResult } from './types.js'
 import type { ToolsConfig } from '../types.js'
 import {
@@ -15,9 +14,19 @@ import {
   checkIncludeSummaryRequiresTable,
 } from './rules.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const schemaPath = resolve(__dirname, '../../schema/tools.schema.json')
+// Resolve the directory of this file for both CJS (__dirname) and ESM (import.meta.url).
+// In the CJS build TypeScript emits __dirname as a module-local variable, so it is always
+// a string.  In the ESM build / vitest source context __dirname is not defined at runtime,
+// so we fall back to import.meta.url.
+// The @ts-ignore suppresses TS1343 ("import.meta only allowed when module is …") which is
+// emitted by the CJS compiler — the branch is never reached in the CJS bundle anyway.
+const _dir: string =
+  typeof __dirname !== 'undefined'
+    ? __dirname
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    : dirname(fileURLToPath(import.meta.url))
+const schemaPath = resolve(_dir, '../../schema/tools.schema.json')
 
 let cachedValidator: ReturnType<Ajv['compile']> | null = null
 
