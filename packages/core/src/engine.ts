@@ -280,7 +280,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       try {
         const authToken: string | undefined = (() => {
           if (config.auth?.token) {
-            // If token function throws, the outer try/catch in handler() catches it and returns INTERNAL_ERROR
+            // token 함수가 예외를 던지면 handler()의 바깥 try/catch가 잡아 INTERNAL_ERROR를 반환함
             return typeof config.auth.token === 'function'
               ? (config.auth.token(req) ?? undefined)
               : config.auth.token
