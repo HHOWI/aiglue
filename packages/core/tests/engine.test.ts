@@ -352,4 +352,37 @@ describe('createAIEngine — config.auth.token', () => {
     expect(receivedHeaders['authorization']).toBe('Bearer static-service-token')
     await new Promise<void>((r) => authTestServer2.close(() => r()))
   })
+
+  it('returns error response when auth.token function throws', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      auth: {
+        type: 'bearer',
+        token: () => { throw new Error('cookie parse failed') },
+      },
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({ type: 'text', text: 'hello' }),
+    })
+
+    const mockReq = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: { message: 'list todos' },
+    }
+    const chunks: string[] = []
+    const mockRes = {
+      setHeader: vi.fn(),
+      write: (chunk: string) => { chunks.push(chunk) },
+      end: vi.fn(),
+      json: (data: unknown) => { chunks.push(JSON.stringify(data)) },
+    }
+
+    const handlerFn = engine.handler()
+    await handlerFn(mockReq as never, mockRes as never)
+
+    const data = JSON.parse(chunks.join(''))
+    expect(data.type).toBe('error')
+  })
 })
