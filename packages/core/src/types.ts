@@ -14,13 +14,15 @@ export interface ToolDefinition {
   response_mapping?: ResponseMapping
   columns?: ColumnDefinition[]
   examples?: string[]
-  response_type?: 'text' | 'table' | 'raw' | 'summary' | 'chart' | 'auto'
+  response_type?: 'text' | 'table' | 'raw' | 'summary'
+  // TODO(roadmap): 'chart' | 'auto' response types planned for v1.5
   /** When true on a `response_type: table` tool, adds an LLM-generated summary string
    *  to the AIETableResponse. Ignored for other response types. */
   include_summary?: boolean
   risk_level?: 'read' | 'write' | 'critical'
   confirm_message?: string
   rate_limit?: string
+  sensitive_params?: string[]
 }
 
 export interface ParamDefinition {
@@ -132,6 +134,16 @@ export interface LLMResponse {
 
 // ── Engine 설정 타입 ──
 
+export interface MessagesConfig {
+  confirmPrompt?: (toolName: string, params: Record<string, unknown>) => string
+  actionComplete?: (toolName: string) => string
+  cancelledMessage?: string
+  emptyMessageError?: string
+  toolNotAvailableError?: string
+  rateLimitedError?: string
+  internalError?: string
+}
+
 export interface AIEngineConfig {
   tools: string
   domainDocs?: string
@@ -140,6 +152,7 @@ export interface AIEngineConfig {
   rateLimiting?: RateLimitConfig
   baseUrl?: string
   history?: HistoryConfig
+  messages?: MessagesConfig
 }
 
 export interface HistoryConfig {

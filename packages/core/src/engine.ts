@@ -9,7 +9,8 @@ import { ResponseFormatter } from './response-formatter.js'
 import { Summarizer } from './summarizer.js'
 import { RateLimiter } from './rate-limiter.js'
 import { Logger } from './logger.js'
-import type { AIEngineConfig, AIEResponse, ChatMessage } from './types.js'
+import { DEFAULT_MESSAGES } from './messages.js'
+import type { AIEngineConfig, AIEResponse, ChatMessage, MessagesConfig } from './types.js'
 
 export interface HandlerRequest {
   headers?: Record<string, string | string[] | undefined>
@@ -49,6 +50,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   const executor = new Executor(registry, config.baseUrl ?? 'http://localhost:3000')
   const rateLimiter = new RateLimiter(config.rateLimiting ?? {})
   const logger = new Logger()
+  const messages: Required<MessagesConfig> = { ...DEFAULT_MESSAGES, ...config.messages }
 
   const maxHistory = config.history?.maxMessages ?? 10
 
@@ -85,7 +87,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     const rateLimitKey = options?.userId ?? 'global'
 
     if (!rateLimiter.check(rateLimitKey)) {
-      return formatter.formatError('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED')
+      return formatter.formatError(messages.rateLimitedError, 'RATE_LIMIT_EXCEEDED')
     }
 
     let llmTokensIn = 0
@@ -136,10 +138,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           responseType: 'error',
           error: safetyResult.reason,
         })
-        return formatter.formatError(
-          safetyResult.reason ?? 'Tool not allowed',
-          'TOOL_NOT_ALLOWED',
-        )
+        return formatter.formatError(messages.toolNotAvailableError, 'TOOL_NOT_ALLOWED')
       }
 
       if (safetyResult.requiresConfirm) {
@@ -156,7 +155,8 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           success: true,
           responseType: 'confirm',
         })
-        return formatter.formatConfirm(tool, params)
+        const confirmMsg = tool.confirm_message ?? messages.confirmPrompt(tool.name, params)
+        return formatter.formatConfirm(tool, params, confirmMsg)
       }
 
       const executionResult = await executor.execute(toolName, params, options?.authToken)
@@ -253,7 +253,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
         return formatter.formatError(errorMsg, 'API_ERROR')
       }
 
-      const response = formatter.formatAction(true, `${toolName} 작업이 완료되었습니다.`)
+      const response = formatter.formatAction(true, messages.actionComplete(toolName))
 
       logger.log({
         timestamp: new Date().toISOString(),
@@ -280,10 +280,10 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       try {
         const authToken: string | undefined = (() => {
           if (config.auth?.token) {
-            // if token function throws, the outer try/catch in handler() catches it and returns INTERNAL_ERROR
-            return typeof config.auth.token === 'function'
-              ? (config.auth.token(req) ?? undefined)
+            const raw = typeof config.auth.token === 'function'
+              ? config.auth.token(req)
               : config.auth.token
+            return raw || undefined
           }
           const rawAuth = req.headers?.authorization
           const authHeader: string | undefined = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth
@@ -300,14 +300,18 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           return
         }
 
-        const message: string = req.body?.message ?? ''
+        const message = (req.body?.message ?? '').trim()
+        if (!message) {
+          res.json(formatter.formatError(messages.emptyMessageError, 'EMPTY_MESSAGE'))
+          return
+        }
         const userId: string | undefined = req.body?.userId
         const history = req.body?.history
         const result = await processMessage(message, { authToken, userId, history })
         res.json(result)
       } catch (err) {
         logger.error('handler error', err)
-        res.json(formatter.formatError('Internal server error', 'INTERNAL_ERROR'))
+        res.json(formatter.formatError(messages.internalError, 'INTERNAL_ERROR'))
       }
     }
   }

@@ -145,6 +145,27 @@ describe('ResponseFormatter', () => {
     }
   })
 
+  it('should coerce total_path string value to number', () => {
+    const toolWithTotal: ToolDefinition = {
+      name: 'list_items',
+      description: 'List items',
+      endpoint: 'GET /api/items',
+      response_type: 'table',
+      response_mapping: { data_path: 'data', total_path: 'meta.total' },
+      columns: [{ key: 'id', label: 'ID' }],
+    }
+    const apiResponse = {
+      data: [{ id: 1 }],
+      meta: { total: '42' },
+    }
+    const result = formatter.format(toolWithTotal, apiResponse)
+    expect(result.type).toBe('table')
+    if (result.type === 'table') {
+      expect(result.total).toBe(42)
+      expect(typeof result.total).toBe('number')
+    }
+  })
+
   it('preserves arbitrary shapes (array, primitive) for raw', () => {
     const rawTool: ToolDefinition = {
       name: 'anything',

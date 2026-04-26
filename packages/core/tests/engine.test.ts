@@ -245,6 +245,97 @@ describe('createAIEngine — history passthrough', () => {
   })
 })
 
+describe('createAIEngine — empty message + i18n', () => {
+  it('should return error when message is empty string', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() } as never)
+
+    const req = { body: { message: '' } }
+    let captured: unknown
+    const res = { json: (d: unknown) => { captured = d } }
+    await engine.handler()(req as never, res as never)
+
+    expect((captured as { type: string }).type).toBe('error')
+    expect((captured as { code: string }).code).toBe('EMPTY_MESSAGE')
+  })
+
+  it('should return error when message is whitespace only', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() } as never)
+
+    const req = { body: { message: '   ' } }
+    let captured: unknown
+    const res = { json: (d: unknown) => { captured = d } }
+    await engine.handler()(req as never, res as never)
+
+    expect((captured as { type: string }).type).toBe('error')
+    expect((captured as { code: string }).code).toBe('EMPTY_MESSAGE')
+  })
+
+  it('should not set Bearer header when auth.token() returns undefined', async () => {
+    let capturedAuthHeader: string | undefined = 'not-set'
+    const authCheckServer = createServer((req, res) => {
+      capturedAuthHeader = req.headers.authorization
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify([]))
+    })
+    const authCheckPort = await new Promise<number>((resolve) => {
+      authCheckServer.listen(0, () => {
+        const addr = authCheckServer.address()
+        resolve(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${authCheckPort}`,
+      auth: { type: 'bearer', token: () => undefined },
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 'get_users', params: {} },
+        textContent: null,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+      chat: vi.fn(),
+    } as never)
+
+    await engine.processMessage('show users')
+    authCheckServer.close()
+
+    expect(capturedAuthHeader).toBeUndefined()
+  })
+
+  it('should use custom messages from config', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+      messages: {
+        emptyMessageError: 'Custom: message required',
+      },
+    })
+    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() } as never)
+
+    const req = { body: { message: '' } }
+    let captured: unknown
+    const res = { json: (d: unknown) => { captured = d } }
+    await engine.handler()(req as never, res as never)
+
+    expect((captured as { message: string }).message).toBe('Custom: message required')
+  })
+})
+
 describe('createAIEngine — config.auth.token', () => {
   it('passes token from auth.token function to downstream API', async () => {
     const receivedHeaders: Record<string, string> = {}

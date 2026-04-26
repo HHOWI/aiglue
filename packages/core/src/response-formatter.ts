@@ -49,7 +49,8 @@ export class ResponseFormatter {
     }
 
     if (tool.response_mapping?.total_path) {
-      total = this.getNestedValue(apiResponse, tool.response_mapping.total_path) as number | undefined
+      const rawTotal = this.getNestedValue(apiResponse, tool.response_mapping.total_path)
+      total = rawTotal != null ? Number(rawTotal) : undefined
     }
 
     return {
@@ -85,10 +86,10 @@ export class ResponseFormatter {
     return { type: 'action', status: success ? 'success' : 'failed', message }
   }
 
-  formatConfirm(tool: ToolDefinition, params: Record<string, unknown>): AIEResponse {
+  formatConfirm(tool: ToolDefinition, params: Record<string, unknown>, message?: string): AIEResponse {
     return {
       type: 'confirm',
-      message: tool.confirm_message ?? `${tool.name} 작업을 실행합니다. 진행할까요?`,
+      message: message ?? tool.confirm_message ?? `${tool.name} 작업을 실행합니다. 진행할까요?`,
       toolName: tool.name,
       params,
     }
