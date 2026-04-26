@@ -1,4 +1,5 @@
 import type { LLMProvider } from './providers/types.js'
+import { Logger } from './logger.js'
 import type {
   ToolDefinition,
   AIEResponse,
@@ -18,7 +19,10 @@ const MAX_SUMMARY_TOKENS = 300
 const FALLBACK_TEXT_MAX_LENGTH = 2000
 
 export class Summarizer {
-  constructor(private provider: LLMProvider) {}
+  constructor(
+    private provider: LLMProvider,
+    private logger: Logger,
+  ) {}
 
   async maybeSummarize(
     tool: ToolDefinition,
@@ -53,13 +57,10 @@ export class Summarizer {
       }
       return withSummary
     } catch (err) {
-      console.warn(JSON.stringify({
-        level: 'warn',
-        scope: 'summarizer',
-        summary_failed: true,
+      this.logger.warn('summarization failed, falling back', {
         tool: tool.name,
         error: err instanceof Error ? err.message : String(err),
-      }))
+      })
       if (wantSummary) {
         return this.buildTextFallback(apiResponse)
       }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Summarizer } from '../src/summarizer.js'
+import type { Logger } from '../src/logger.js'
 import type { LLMProvider } from '../src/providers/types.js'
 import type { ToolDefinition, AIEResponse, AIETableResponse } from '../src/types.js'
 
@@ -15,6 +16,10 @@ function makeProvider(chatResult: { text: string; tokensIn?: number; tokensOut?:
       })
     }),
   }
+}
+
+function makeLogger(): Logger {
+  return { log: vi.fn(), error: vi.fn(), warn: vi.fn() } as unknown as Logger
 }
 
 const summaryTool: ToolDefinition = {
@@ -44,7 +49,7 @@ const plainTableTool: ToolDefinition = {
 describe('Summarizer.maybeSummarize', () => {
   it('replaces base with AIESummaryResponse when response_type is summary', async () => {
     const provider = makeProvider({ text: 'Alice는 admin입니다.' })
-    const summarizer = new Summarizer(provider)
+    const summarizer = new Summarizer(provider, makeLogger())
     const base: AIEResponse = { type: 'text', content: '{"id":1}' }
     const apiResponse = { id: 1, name: 'Alice', role: 'admin' }
 
@@ -65,7 +70,7 @@ describe('Summarizer.maybeSummarize', () => {
 
   it('passes user question, tool name, and max_tokens=300 to chat()', async () => {
     const provider = makeProvider({ text: 'ok' })
-    const summarizer = new Summarizer(provider)
+    const summarizer = new Summarizer(provider, makeLogger())
     const base: AIEResponse = { type: 'text', content: '{}' }
 
     await summarizer.maybeSummarize(summaryTool, '원본 질문', { foo: 'bar' }, base)
@@ -82,7 +87,7 @@ describe('Summarizer.maybeSummarize', () => {
 
   it('fills AIETableResponse.summary when include_summary is true', async () => {
     const provider = makeProvider({ text: '총 5건, 합계 ₩1,000' })
-    const summarizer = new Summarizer(provider)
+    const summarizer = new Summarizer(provider, makeLogger())
     const base: AIETableResponse = {
       type: 'table',
       columns: [{ key: 'id', label: 'ID' }],
@@ -105,7 +110,7 @@ describe('Summarizer.maybeSummarize', () => {
 
   it('returns base unchanged when tool has no summary opt-in', async () => {
     const provider = makeProvider({ text: 'unused' })
-    const summarizer = new Summarizer(provider)
+    const summarizer = new Summarizer(provider, makeLogger())
     const base: AIEResponse = {
       type: 'table',
       columns: [{ key: 'id', label: 'ID' }],
@@ -120,7 +125,7 @@ describe('Summarizer.maybeSummarize', () => {
 
   it('degrades summary-only to text fallback on chat() error', async () => {
     const provider = makeProvider(new Error('rate limited'))
-    const summarizer = new Summarizer(provider)
+    const summarizer = new Summarizer(provider, makeLogger())
     const base: AIEResponse = { type: 'text', content: 'base' }
     const apiResponse = { id: 1, name: 'Alice' }
 
@@ -135,7 +140,7 @@ describe('Summarizer.maybeSummarize', () => {
 
   it('skips summary field on include_summary error, returns base table unchanged', async () => {
     const provider = makeProvider(new Error('timeout'))
-    const summarizer = new Summarizer(provider)
+    const summarizer = new Summarizer(provider, makeLogger())
     const base: AIETableResponse = {
       type: 'table',
       columns: [{ key: 'id', label: 'ID' }],
@@ -156,9 +161,28 @@ describe('Summarizer.maybeSummarize', () => {
     }
   })
 
+  it('should call logger.warn instead of console.warn on summarization failure', async () => {
+    const mockProvider: LLMProvider = {
+      resolve: vi.fn(),
+      chat: vi.fn().mockRejectedValue(new Error('LLM down')),
+    }
+    const warnSpy = vi.fn()
+    const mockLogger = { log: vi.fn(), error: vi.fn(), warn: warnSpy }
+
+    const summarizer = new Summarizer(mockProvider, mockLogger as unknown as import('../src/logger.js').Logger)
+
+    const result = await summarizer.maybeSummarize(summaryTool, 'show me items', [{ id: 1 }], {
+      type: 'text',
+      content: 'fallback',
+    })
+
+    expect(result.type).toBe('text')
+    expect(warnSpy).toHaveBeenCalledOnce()
+  })
+
   it('truncates large source in text fallback to 2000 chars', async () => {
     const provider = makeProvider(new Error('fail'))
-    const summarizer = new Summarizer(provider)
+    const summarizer = new Summarizer(provider, makeLogger())
     const huge = { items: Array.from({ length: 500 }, (_, i) => ({ id: i, name: 'row' + i })) }
     const base: AIEResponse = { type: 'text', content: 'base' }
 

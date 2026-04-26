@@ -8,7 +8,7 @@ import { Executor } from './executor.js'
 import { ResponseFormatter } from './response-formatter.js'
 import { Summarizer } from './summarizer.js'
 import { RateLimiter } from './rate-limiter.js'
-import { Logger } from './logger.js'
+import { Logger, redactParams } from './logger.js'
 import { DEFAULT_MESSAGES } from './messages.js'
 import type { AIEngineConfig, AIEResponse, ChatMessage, MessagesConfig } from './types.js'
 
@@ -72,11 +72,11 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   }
 
   let resolver = new IntentResolver(provider, registry)
-  let summarizer = new Summarizer(provider)
+  let summarizer = new Summarizer(provider, logger)
 
   function rebuildResolver(): void {
     resolver = new IntentResolver(provider, registry)
-    summarizer = new Summarizer(provider)
+    summarizer = new Summarizer(provider, logger)
   }
 
   async function processMessage(
@@ -121,6 +121,8 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       const { toolName, params } = llmResponse.toolCall
       resolvedTool = toolName
       resolvedParams = params
+      const toolDef = registry.getTool(toolName)
+      const safeParams = redactParams(resolvedParams, toolDef?.sensitive_params ?? [])
 
       const safetyResult = safety.check(toolName, params)
 
@@ -130,7 +132,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           userId: options?.userId,
           input: message,
           resolvedTool,
-          params: resolvedParams,
+          params: safeParams,
           latencyMs: Date.now() - startMs,
           llmTokensIn,
           llmTokensOut,
@@ -148,7 +150,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           userId: options?.userId,
           input: message,
           resolvedTool,
-          params: resolvedParams,
+          params: safeParams,
           latencyMs: Date.now() - startMs,
           llmTokensIn,
           llmTokensOut,
@@ -168,7 +170,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           userId: options?.userId,
           input: message,
           resolvedTool,
-          params: resolvedParams,
+          params: safeParams,
           latencyMs: Date.now() - startMs,
           llmTokensIn,
           llmTokensOut,
@@ -193,7 +195,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
         userId: options?.userId,
         input: message,
         resolvedTool,
-        params: resolvedParams,
+        params: safeParams,
         latencyMs: Date.now() - startMs,
         llmTokensIn,
         llmTokensOut,
@@ -205,12 +207,13 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
       logger.error('processMessage failed', err)
+      const catchSafeParams = redactParams(resolvedParams, resolvedTool ? (registry.getTool(resolvedTool)?.sensitive_params ?? []) : [])
       logger.log({
         timestamp: new Date().toISOString(),
         userId: options?.userId,
         input: message,
         resolvedTool,
-        params: resolvedParams,
+        params: catchSafeParams,
         latencyMs: Date.now() - startMs,
         llmTokensIn,
         llmTokensOut,
