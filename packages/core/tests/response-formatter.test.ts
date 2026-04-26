@@ -103,6 +103,20 @@ describe('ResponseFormatter', () => {
     }
   })
 
+  it('should use explicit message arg over tool.confirm_message in formatConfirm', () => {
+    const tool: ToolDefinition = {
+      name: 'delete_user',
+      description: 'Delete user',
+      endpoint: 'DELETE /api/users/:id',
+      confirm_message: 'original message',
+    }
+    const result = formatter.formatConfirm(tool, { id: '1' }, 'override message')
+    expect(result.type).toBe('confirm')
+    if (result.type === 'confirm') {
+      expect(result.message).toBe('override message')
+    }
+  })
+
   it('should format error response', () => {
     const result = formatter.formatError('서버 오류', 'API_ERROR')
     expect(result.type).toBe('error')
