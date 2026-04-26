@@ -4,10 +4,14 @@ import type { ToolsConfig, ToolDefinition, LLMToolDefinition } from './types.js'
 
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition>
+  private llmToolsCache: LLMToolDefinition[] | null = null
 
   private constructor(config: ToolsConfig) {
     this.tools = new Map()
     for (const tool of config.tools) {
+      if (this.tools.has(tool.name)) {
+        throw new Error(`Duplicate tool name "${tool.name}" in tools.yaml. Tool names must be unique.`)
+      }
       this.tools.set(tool.name, tool)
     }
   }
@@ -53,6 +57,11 @@ export class ToolRegistry {
   }
 
   toLLMTools(): LLMToolDefinition[] {
+    // Computed once — registry is immutable after construction
+    return (this.llmToolsCache ??= this.buildLLMTools())
+  }
+
+  private buildLLMTools(): LLMToolDefinition[] {
     return this.getAllTools().map(tool => {
       let description = tool.description
       if (tool.examples && tool.examples.length > 0) {

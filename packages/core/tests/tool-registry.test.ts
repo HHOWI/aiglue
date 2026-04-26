@@ -55,6 +55,25 @@ describe('ToolRegistry', () => {
     expect(() => ToolRegistry.fromFile('/nonexistent/path.yaml')).toThrow()
   })
 
+  it('should throw when two tools share the same name', () => {
+    expect(() =>
+      ToolRegistry.fromConfig({
+        tools_yaml_version: '1.0',
+        tools: [
+          { name: 'get_users', description: 'First', endpoint: 'GET /api/users' },
+          { name: 'get_users', description: 'Second (duplicate)', endpoint: 'GET /api/users/v2' },
+        ],
+      })
+    ).toThrow('Duplicate tool name "get_users"')
+  })
+
+  it('should return the same array reference on repeated toLLMTools() calls', () => {
+    const registry = ToolRegistry.fromFile(fixturePath)
+    const first = registry.toLLMTools()
+    const second = registry.toLLMTools()
+    expect(first).toBe(second)
+  })
+
   it('should include examples in LLM tool description', () => {
     const registry = ToolRegistry.fromFile(fixturePath)
     const llmTools = registry.toLLMTools()
