@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { RateLimiter } from '../src/rate-limiter.js'
 
 describe('RateLimiter', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('should allow requests within limit', () => {
     const limiter = new RateLimiter({ global: '3/min' })
     expect(limiter.check('global')).toBe(true)
@@ -43,8 +47,6 @@ describe('RateLimiter', () => {
     // Can make 1 more request (limit is 2)
     expect(limiter.check('user-a')).toBe(true)
     expect(limiter.check('user-a')).toBe(false)
-
-    vi.useRealTimers()
   })
 
   it('should apply perUser limit to userId keys separately from global', () => {
