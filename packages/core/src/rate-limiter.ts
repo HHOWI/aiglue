@@ -3,35 +3,55 @@ interface RateLimitEntry {
   resetAt: number
 }
 
+interface ParsedLimit {
+  max: number
+  windowMs: number
+}
+
 export class RateLimiter {
   private limits: Map<string, RateLimitEntry> = new Map()
-  private maxRequests: number
-  private windowMs: number
+  private globalLimit: ParsedLimit
+  private perUserLimit: ParsedLimit | null
 
-  constructor(config: { global?: string }) {
-    const parsed = this.parseRateString(config.global ?? '60/min')
-    this.maxRequests = parsed.max
-    this.windowMs = parsed.windowMs
+  constructor(config: { global?: string; perUser?: string }) {
+    this.globalLimit = this.parseRateString(config.global ?? '60/min')
+    this.perUserLimit = config.perUser ? this.parseRateString(config.perUser) : null
   }
 
   check(key: string): boolean {
     const now = Date.now()
+    const { max, windowMs } = this.resolveLimit(key)
+
     const entry = this.limits.get(key)
 
-    if (!entry || now >= entry.resetAt) {
-      this.limits.set(key, { count: 1, resetAt: now + this.windowMs })
+    // Evict stale entry — lazy cleanup prevents unbounded map growth
+    if (entry && now >= entry.resetAt) {
+      this.limits.delete(key)
+    }
+
+    const current = this.limits.get(key)
+
+    if (!current) {
+      this.limits.set(key, { count: 1, resetAt: now + windowMs })
       return true
     }
 
-    if (entry.count >= this.maxRequests) {
+    if (current.count >= max) {
       return false
     }
 
-    entry.count++
+    current.count++
     return true
   }
 
-  private parseRateString(rate: string): { max: number; windowMs: number } {
+  private resolveLimit(key: string): ParsedLimit {
+    if (key === 'global' || !this.perUserLimit) {
+      return this.globalLimit
+    }
+    return this.perUserLimit
+  }
+
+  private parseRateString(rate: string): ParsedLimit {
     const match = rate.match(/^(\d+)\/(min|hour|sec)$/)
     if (!match) {
       return { max: 60, windowMs: 60_000 }
