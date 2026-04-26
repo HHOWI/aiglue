@@ -231,6 +231,8 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     options?: { authToken?: string },
   ): Promise<AIEResponse> {
     const startMs = Date.now()
+    const confirmToolDef = registry.getTool(toolName)
+    const confirmSafeParams = redactParams(params, confirmToolDef?.sensitive_params ?? [])
 
     try {
       if (!registry.hasTool(toolName)) {
@@ -245,7 +247,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           timestamp: new Date().toISOString(),
           input: `[confirm] ${toolName}`,
           resolvedTool: toolName,
-          params,
+          params: confirmSafeParams,
           latencyMs: Date.now() - startMs,
           llmTokensIn: 0,
           llmTokensOut: 0,
@@ -262,7 +264,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
         timestamp: new Date().toISOString(),
         input: `[confirm] ${toolName}`,
         resolvedTool: toolName,
-        params,
+        params: confirmSafeParams,
         latencyMs: Date.now() - startMs,
         llmTokensIn: 0,
         llmTokensOut: 0,
