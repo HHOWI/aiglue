@@ -29,6 +29,13 @@ export class Executor {
 
     const { method, path } = this.registry.parseEndpoint(tool.endpoint)
 
+    // Validate all path params are provided (non-null)
+    const pathParamNames = [...path.matchAll(/:(\w+)/g)].map(m => m[1])
+    const missingParams = pathParamNames.filter(p => params[p] == null)
+    if (missingParams.length > 0) {
+      throw new Error(`Missing required path param(s): ${missingParams.join(', ')}`)
+    }
+
     // Replace path params (e.g., :id)
     let resolvedPath = path
     for (const [key, value] of Object.entries(params)) {
@@ -39,7 +46,7 @@ export class Executor {
     const url = new URL(resolvedPath, this.baseUrl)
     if (method === 'GET') {
       for (const [key, value] of Object.entries(params)) {
-        if (!path.includes(`:${key}`) && value !== undefined && value !== null) {
+        if (!path.includes(`:${key}`) && value != null) {
           url.searchParams.set(key, String(value))
         }
       }
