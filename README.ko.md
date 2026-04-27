@@ -232,22 +232,24 @@ llm: {
 
 Function calling 품질은 모델에 따라 편차가 있다 — 안정적인 tool 호출을 위해 instruction-tuned 7B 이상 모델 권장. `openai-compatible`에서 `model`은 필수, `apiKey`는 선택(로컬 런너는 불필요).
 
-### Auto 모드 (AI 응답 포맷팅)
+### 메시지 (i18n)
 
-AI가 데이터를 분석하고 적절한 형식 + 인사이트를 자동 생성합니다:
+기본 영문 메시지를 원하는 언어로 교체할 수 있습니다:
 
-```yaml
-response_type: auto  # AI가 데이터를 보고 형식 결정 + 요약 생성
+```ts
+const engine = createAIEngine({
+  messages: {
+    confirmPrompt: (toolName, params) => `"${toolName}" 실행하시겠습니까?`,
+    actionComplete: (toolName) => `"${toolName}" 완료되었습니다.`,
+    emptyMessageError: '메시지를 입력해 주세요.',
+    toolNotAvailableError: '사용할 수 없는 기능입니다.',
+    rateLimitedError: '잠시 후 다시 시도해 주세요.',
+    internalError: '오류가 발생했습니다.',
+  },
+})
 ```
 
-```json
-{
-  "type": "table",
-  "columns": [...],
-  "rows": [...],
-  "summary": "이번 주 총 5회 운동. 벤치프레스 볼륨이 지난주 대비 15% 증가했습니다."
-}
-```
+모든 필드는 선택입니다 — 생략하면 기본 영문 메시지가 사용됩니다.
 
 ### Headless (UI 자유도 100%)
 
@@ -259,7 +261,6 @@ aiglue는 구조화된 JSON을 반환합니다. 렌더링은 개발자가 자유
 | `table` | 컬럼 + 행 데이터 |
 | `summary` | LLM이 생성한 자연어 요약. 프로필·상태 조회처럼 풀어서 말해주고 싶을 때 |
 | `raw` | 기존 API 응답을 그대로 전달 — 프론트의 기존 컴포넌트가 처리 |
-| `chart` | 차트 타입 + 시리즈 데이터 |
 | `action` | 작업 성공/실패 결과 |
 | `confirm` | 사용자 승인 필요 |
 | `clarify` | 추가 정보 필요 |
@@ -388,9 +389,10 @@ tools:
     examples:                     # 자연어 예시 (정확도 향상)
       - "전체 항목 보여줘"
       - "활성 사용자 목록"
-    response_type: table          # text | table | raw | summary | chart | auto
+    response_type: table          # text | table | raw | summary
     include_summary: true         # response_type: table 전용 — LLM 요약 문장 추가
     risk_level: read              # read | write | critical
+    sensitive_params: [password, token]  # 로그 마스킹: 나열된 파라미터는 [REDACTED]로 출력
     confirm_message: "진행할까요?"  # write/critical일 때 표시
     rate_limit: "10/min"          # Tool별 요청 제한
 ```

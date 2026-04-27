@@ -234,22 +234,24 @@ llm: {
 
 Function calling quality depends on the model — prefer instruction-tuned models ≥7B for reliable tool use. `model` is required for `openai-compatible`; `apiKey` is optional (local runners don't need one).
 
-### Auto Mode (AI-Powered Response Formatting)
+### Messages (i18n)
 
-Let the AI decide how to present the data and generate insights:
+Override the default English messages with locale-specific text:
 
-```yaml
-response_type: auto  # AI analyzes data, picks format, adds summary
+```ts
+const engine = createAIEngine({
+  messages: {
+    confirmPrompt: (toolName, params) => `Run "${toolName}"? Confirm.`,
+    actionComplete: (toolName) => `"${toolName}" completed.`,
+    emptyMessageError: 'Please enter a message.',
+    toolNotAvailableError: 'This operation is not available.',
+    rateLimitedError: 'Too many requests. Please wait.',
+    internalError: 'An error occurred.',
+  },
+})
 ```
 
-```json
-{
-  "type": "table",
-  "columns": [...],
-  "rows": [...],
-  "summary": "5 workouts this week. Bench press volume up 15% vs last week."
-}
-```
+All fields are optional — omit any to keep the English default.
 
 ### Headless (No UI Opinion)
 
@@ -261,7 +263,6 @@ aiglue returns structured JSON. You render it however you want:
 | `table` | Columns + rows |
 | `summary` | LLM-generated natural language summary of the tool result — use for profile/status-like responses |
 | `raw` | Original API response passed through untouched — render with your existing component |
-| `chart` | Chart type + series data |
 | `action` | Success/failure result |
 | `confirm` | Needs user approval |
 | `clarify` | Needs more info from user |
@@ -390,9 +391,10 @@ tools:
     examples:                     # Natural language examples (improves accuracy)
       - "Show me all items"
       - "List active users"
-    response_type: table          # text | table | raw | summary | chart | auto
+    response_type: table          # text | table | raw | summary
     include_summary: true         # Only with response_type: table — adds an LLM summary sentence
     risk_level: read              # read | write | critical
+    sensitive_params: [password, token]  # Log masking: listed params show as [REDACTED]
     confirm_message: "Proceed?"   # Shown for write/critical
     rate_limit: "10/min"          # Per-tool rate limit
 ```
