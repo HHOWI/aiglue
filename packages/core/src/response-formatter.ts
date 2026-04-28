@@ -107,4 +107,13 @@ export class ResponseFormatter {
   formatError(message: string, code: string): AIEResponse {
     return { type: 'error', message, code }
   }
+
+  formatClarify(question: string, options?: string[]): AIEResponse {
+    const cleaned = (options ?? []).filter((o) => typeof o === 'string' && o.length > 0)
+    return {
+      type: 'clarify',
+      question,
+      ...(cleaned.length > 0 ? { options: cleaned } : {}),
+    }
+  }
 }

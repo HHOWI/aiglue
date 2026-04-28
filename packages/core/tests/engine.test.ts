@@ -750,6 +750,78 @@ tools:
   })
 })
 
+describe('createAIEngine — clarify meta tool', () => {
+  it('returns AIEClarifyResponse when the LLM calls the clarify meta tool', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: {
+          toolName: '__aiglue_clarify__',
+          params: { question: '어떤 사용자를 보고 싶으신가요?', options: ['전체', '활성', '관리자만'] },
+        },
+        textContent: null,
+        tokensIn: 30,
+        tokensOut: 10,
+      }),
+    })
+
+    const result = await engine.processMessage('그거 보여줘')
+    expect(result.type).toBe('clarify')
+    if (result.type === 'clarify') {
+      expect(result.question).toBe('어떤 사용자를 보고 싶으신가요?')
+      expect(result.options).toEqual(['전체', '활성', '관리자만'])
+    }
+  })
+
+  it('omits options field when the LLM did not provide any', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: {
+          toolName: '__aiglue_clarify__',
+          params: { question: '날짜 범위를 알려주세요.' },
+        },
+        textContent: null,
+        tokensIn: 10,
+        tokensOut: 5,
+      }),
+    })
+
+    const result = await engine.processMessage('지난주 데이터')
+    expect(result.type).toBe('clarify')
+    if (result.type === 'clarify') {
+      expect(result.options).toBeUndefined()
+    }
+  })
+
+  it('clarify is intercepted before SafetyGate so the meta tool name never triggers TOOL_NOT_ALLOWED', async () => {
+    // The clarify meta tool is NOT in tools.yaml — if engine forgot to intercept, SafetyGate would reject it.
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: '__aiglue_clarify__', params: { question: 'q?' } },
+        textContent: null,
+        tokensIn: 10,
+        tokensOut: 5,
+      }),
+    })
+    const result = await engine.processMessage('vague')
+    expect(result.type).not.toBe('error')
+  })
+})
+
 describe('createAIEngine — disposeOnSignal', () => {
   it('registers and detaches SIGTERM/SIGINT handlers when enabled', async () => {
     const before = process.listenerCount('SIGTERM')

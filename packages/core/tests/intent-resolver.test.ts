@@ -50,7 +50,7 @@ describe('IntentResolver', () => {
     expect(result.textContent).toBe('무엇을 도와드릴까요?')
   })
 
-  it('should include tool definitions from registry in LLM call', async () => {
+  it('should include tool definitions from registry plus the clarify meta tool in the LLM call', async () => {
     const registry = ToolRegistry.fromFile(fixturePath)
     const mockProvider = createMockProvider({
       toolCall: null,
@@ -64,7 +64,9 @@ describe('IntentResolver', () => {
 
     const call = vi.mocked(mockProvider.resolve).mock.calls[0]
     const tools = call[1]
-    expect(tools).toHaveLength(3)
-    expect(tools[0].name).toBe('get_users')
+    // 3 user tools from sample-tools.yaml + 1 reserved clarify meta tool the resolver injects.
+    expect(tools).toHaveLength(4)
+    expect(tools.map((t) => t.name)).toContain('get_users')
+    expect(tools.map((t) => t.name)).toContain('__aiglue_clarify__')
   })
 })

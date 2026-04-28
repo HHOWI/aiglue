@@ -4,7 +4,7 @@ import { ToolRegistry } from './tool-registry.js'
 import { ClaudeProvider } from './providers/claude.js'
 import { OpenAIProvider } from './providers/openai.js'
 import type { LLMProvider } from './providers/types.js'
-import { IntentResolver } from './intent-resolver.js'
+import { IntentResolver, CLARIFY_META_TOOL } from './intent-resolver.js'
 import { SafetyGate } from './safety.js'
 import { Executor } from './executor.js'
 import { ResponseFormatter } from './response-formatter.js'
@@ -203,6 +203,30 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       }
 
       const { toolName, params } = llmResponse.toolCall
+
+      // Clarify meta tool — the LLM is asking the user a follow-up question. Intercept before
+      // SafetyGate / Executor: this tool is reserved by the engine and never appears in tools.yaml.
+      if (toolName === CLARIFY_META_TOOL) {
+        const question = typeof params.question === 'string' ? params.question : ''
+        const clarifyOptions = Array.isArray(params.options)
+          ? (params.options.filter((o) => typeof o === 'string') as string[])
+          : undefined
+        const response = formatter.formatClarify(question, clarifyOptions)
+        logger.log({
+          timestamp: new Date().toISOString(),
+          userId: options?.userId,
+          input: message,
+          resolvedTool: null,
+          params: null,
+          latencyMs: Date.now() - startMs,
+          llmTokensIn,
+          llmTokensOut,
+          success: true,
+          responseType: 'clarify',
+        })
+        return response
+      }
+
       resolvedTool = toolName
       resolvedParams = params
       const toolDef = registry.getTool(toolName)
