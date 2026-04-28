@@ -13,6 +13,7 @@ import { RateLimiter } from './rate-limiter.js'
 import { IdempotencyStore } from './idempotency.js'
 import { Logger, redactParams } from './logger.js'
 import { DEFAULT_MESSAGES } from './messages.js'
+import { validateAIEngineConfig } from './config-validate.js'
 import type { AIEngineConfig, AIEResponse, ChatMessage, MessagesConfig } from './types.js'
 
 export interface HandlerRequest {
@@ -52,6 +53,7 @@ export interface AIEngine {
 }
 
 export function createAIEngine(config: AIEngineConfig): AIEngine {
+  validateAIEngineConfig(config)
   const registry = ToolRegistry.fromFile(config.tools)
   const formatter = new ResponseFormatter()
   const safety = new SafetyGate(registry)
