@@ -31,3 +31,6 @@ export type { MCPServerConfig } from './mcp/server.js'
 
 export { SpanStatus } from './observability/tracer.js'
 export type { TracerLike, SpanLike, SpanStatusCode } from './observability/tracer.js'
+
+export type { LLMProvider, ChatOptions, ChatResponse } from './providers/types.js'
+export type { LLMResponse, LLMToolDefinition, LLMToolCallResult } from './types.js'

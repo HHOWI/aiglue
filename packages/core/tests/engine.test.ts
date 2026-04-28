@@ -35,6 +35,20 @@ beforeAll(async () => {
 
 afterAll(() => mockApiServer.close())
 
+describe('createAIEngine — zero-config defaults', () => {
+  it('llm is optional — defaults to claude provider with env-driven auth', () => {
+    // No throw expected. The Anthropic SDK only reads ANTHROPIC_API_KEY when an actual API call fires,
+    // so construction with no env var still succeeds.
+    const engine = createAIEngine({
+      tools: fixturePath,
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    expect(engine).toBeDefined()
+    expect(typeof engine.processMessage).toBe('function')
+    engine.dispose()
+  })
+})
+
 describe('createAIEngine', () => {
   it('should create an engine instance', () => {
     const engine = createAIEngine({

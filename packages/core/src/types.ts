@@ -151,7 +151,9 @@ export interface MessagesConfig {
 export interface AIEngineConfig {
   tools: string
   domainDocs?: string
-  llm: LLMConfig
+  /** Optional. Defaults to `{ provider: 'claude' }`, which lets the Anthropic SDK pick up
+   *  ANTHROPIC_API_KEY from the environment. Override for OpenAI-compatible / custom providers. */
+  llm?: LLMConfig
   auth?: AuthConfig
   rateLimiting?: RateLimitConfig
   baseUrl?: string
@@ -207,13 +209,18 @@ export interface HistoryConfig {
 }
 
 export interface LLMConfig {
-  provider: 'claude' | 'openai-compatible'
+  /** 'claude' / 'openai-compatible' use the bundled providers. 'custom' lets the caller pass any
+   *  object that implements the LLMProvider interface — useful for AWS Bedrock, internal LLM gateways,
+   *  Azure OpenAI, or test mocks. */
+  provider: 'claude' | 'openai-compatible' | 'custom'
   apiKey?: string
   model?: string
   baseUrl?: string
   keyMode?: 'server' | 'user' | 'both'
   /** Per-request timeout in ms for LLM calls (resolve + chat). Default 30000. */
   timeoutMs?: number
+  /** Required when provider === 'custom'. The instance handles every resolve / chat call directly. */
+  instance?: import('./providers/types.js').LLMProvider
 }
 
 export interface AuthConfig {

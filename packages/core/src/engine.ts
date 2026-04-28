@@ -46,13 +46,49 @@ export interface AIEngine {
     params: Record<string, unknown>,
     options?: { authToken?: string; idempotencyKey?: string },
   ): Promise<AIEResponse>
+  /** Express handler: (req, res) => Promise<void>. */
   handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void>
+  /** Fastify handler: (request, reply) => Promise<void>. */
+  fastifyHandler(): (request: FastifyHandlerRequest, reply: FastifyHandlerReply) => Promise<void>
+  /** Hono handler: (c) => Promise<Response>. */
+  honoHandler(): (c: HonoContextLike) => Promise<Response>
+  /** Framework-agnostic dispatcher — useful when wiring a runtime not covered by the built-in adapters. */
+  dispatch(input: { body?: HandlerBody; headers?: Record<string, string | string[] | undefined>; rawRequest?: unknown }): Promise<AIEResponse>
   /** Reload tools.yaml from disk. Atomic — failure leaves the existing registry intact. */
   reload(): Promise<{ ok: true } | { ok: false; error: string }>
   /** Stop background timers (rate-limiter sweep, hot-reload poller). Call on shutdown. */
   dispose(): void
   /** @internal testing only */
   _setProvider(provider: LLMProvider): void
+}
+
+/** Body shape every adapter passes into dispatch — matches what engine.handler() reads from req.body. */
+export type HandlerBody = {
+  message?: string
+  userId?: string
+  action?: string
+  toolName?: string
+  params?: Record<string, unknown>
+  history?: ChatMessage[]
+  idempotencyKey?: string
+}
+
+/** Minimal Fastify request / reply shape — kept structural so we don't depend on @fastify/types at compile time. */
+export interface FastifyHandlerRequest {
+  body?: unknown
+  headers?: Record<string, string | string[] | undefined>
+}
+export interface FastifyHandlerReply {
+  send(payload: unknown): unknown
+}
+
+/** Minimal Hono Context shape — same idea, structural typing only. */
+export interface HonoContextLike {
+  req: {
+    json(): Promise<unknown>
+    header(name: string): string | undefined
+  }
+  json(payload: unknown): Response
 }
 
 export function createAIEngine(config: AIEngineConfig): AIEngine {
@@ -117,16 +153,30 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     return kept
   }
 
+  // llm is optional — default to Claude with env-driven auth so the minimum config is just `tools`.
+  const llmConfig = config.llm ?? { provider: 'claude' as const }
+
   let provider: LLMProvider
-  if (config.llm.provider === 'openai-compatible') {
+  if (llmConfig.provider === 'custom') {
+    if (!llmConfig.instance) {
+      throw new Error("LLMConfig.provider='custom' requires LLMConfig.instance — pass an object implementing LLMProvider.")
+    }
+    provider = llmConfig.instance
+  } else if (llmConfig.provider === 'openai-compatible') {
     provider = new OpenAIProvider({
-      apiKey: config.llm.apiKey,
-      model: config.llm.model ?? '',
-      baseUrl: config.llm.baseUrl,
-      timeoutMs: config.llm.timeoutMs,
+      apiKey: llmConfig.apiKey,
+      model: llmConfig.model ?? '',
+      baseUrl: llmConfig.baseUrl,
+      timeoutMs: llmConfig.timeoutMs,
     })
   } else {
-    provider = new ClaudeProvider(config.llm.apiKey ?? '', config.llm.model, config.llm.timeoutMs)
+    // 'claude' (default). Pass undefined when apiKey is empty so the Anthropic SDK picks up
+    // ANTHROPIC_API_KEY from the environment naturally — saves users a config line.
+    provider = new ClaudeProvider(
+      llmConfig.apiKey || (undefined as unknown as string),
+      llmConfig.model,
+      llmConfig.timeoutMs,
+    )
   }
 
   let resolver = new IntentResolver(provider, registry)
@@ -442,45 +492,87 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     }
   }
 
-  function handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void> {
-    return async (req: HandlerRequest, res: HandlerResponse): Promise<void> => {
-      try {
-        const authToken: string | undefined = (() => {
-          if (config.auth?.token) {
-            const raw = typeof config.auth.token === 'function'
-              ? config.auth.token(req)
-              : config.auth.token
-            return raw || undefined
-          }
-          const rawAuth = req.headers?.authorization
-          const authHeader: string | undefined = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth
-          return authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader
-        })()
+  /** Framework-agnostic dispatcher. Every adapter (Express / Fastify / Hono / custom) funnels through
+   *  this so the auth-pickup, confirm-vs-message routing, empty-message guard, and outer error handler
+   *  stay in one place. */
+  async function dispatch(input: {
+    body?: HandlerBody
+    headers?: Record<string, string | string[] | undefined>
+    /** Optional raw framework request — passed to config.auth.token(req) when configured. */
+    rawRequest?: unknown
+  }): Promise<AIEResponse> {
+    try {
+      const body = input.body
+      const headers = input.headers ?? {}
 
-        if (req.body?.action === 'confirm') {
-          const { toolName, params, idempotencyKey } = req.body as {
-            toolName: string
-            params: Record<string, unknown>
-            idempotencyKey?: string
-          }
-          const result = await confirmAndExecute(toolName, params, { authToken, idempotencyKey })
-          res.json(result)
-          return
+      const authToken: string | undefined = (() => {
+        if (config.auth?.token) {
+          const raw = typeof config.auth.token === 'function'
+            ? config.auth.token(input.rawRequest ?? { headers, body })
+            : config.auth.token
+          return raw || undefined
         }
+        const rawAuth = headers.authorization
+        const authHeader: string | undefined = Array.isArray(rawAuth) ? rawAuth[0] : rawAuth
+        return authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader
+      })()
 
-        const message = (req.body?.message ?? '').trim()
-        if (!message) {
-          res.json(formatter.formatError(messages.emptyMessageError, 'EMPTY_MESSAGE'))
-          return
-        }
-        const userId: string | undefined = req.body?.userId
-        const history = req.body?.history
-        const result = await processMessage(message, { authToken, userId, history })
-        res.json(result)
-      } catch (err) {
-        logger.error('handler error', err)
-        res.json(formatter.formatError(messages.internalError, 'INTERNAL_ERROR'))
+      if (body?.action === 'confirm') {
+        const toolName = body.toolName as string
+        const params = body.params as Record<string, unknown>
+        return await confirmAndExecute(toolName, params, {
+          authToken,
+          idempotencyKey: body.idempotencyKey,
+        })
       }
+
+      const message = (body?.message ?? '').trim()
+      if (!message) {
+        return formatter.formatError(messages.emptyMessageError, 'EMPTY_MESSAGE')
+      }
+      return await processMessage(message, {
+        authToken,
+        userId: body?.userId,
+        history: body?.history,
+      })
+    } catch (err) {
+      logger.error('handler error', err)
+      return formatter.formatError(messages.internalError, 'INTERNAL_ERROR')
+    }
+  }
+
+  function handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void> {
+    return async (req, res) => {
+      const result = await dispatch({
+        body: req.body,
+        headers: req.headers,
+        rawRequest: req,
+      })
+      res.json(result)
+    }
+  }
+
+  function fastifyHandler(): (request: FastifyHandlerRequest, reply: FastifyHandlerReply) => Promise<void> {
+    return async (request, reply) => {
+      const result = await dispatch({
+        body: request.body as HandlerBody | undefined,
+        headers: request.headers,
+        rawRequest: request,
+      })
+      reply.send(result)
+    }
+  }
+
+  function honoHandler(): (c: HonoContextLike) => Promise<Response> {
+    return async (c) => {
+      // Hono's context only exposes header() per-name, so we build a minimal lookup. dispatch only
+      // reads `authorization`, but we pass the full lookup for completeness.
+      const authorization = c.req.header('authorization')
+      const headers: Record<string, string | string[] | undefined> = {}
+      if (authorization !== undefined) headers.authorization = authorization
+      const body = (await c.req.json().catch(() => ({}))) as HandlerBody
+      const result = await dispatch({ body, headers, rawRequest: c })
+      return c.json(result)
     }
   }
 
@@ -566,6 +658,9 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     processMessage,
     confirmAndExecute,
     handler,
+    fastifyHandler,
+    honoHandler,
+    dispatch,
     reload,
     dispose,
     _setProvider,

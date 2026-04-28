@@ -11,7 +11,7 @@ const ALLOWED: Record<string, readonly string[]> = {
     'history', 'messages', 'executor', 'hotReload', 'routing',
     'observability', 'disposeOnSignal',
   ],
-  llm: ['provider', 'apiKey', 'model', 'baseUrl', 'keyMode', 'timeoutMs'],
+  llm: ['provider', 'apiKey', 'model', 'baseUrl', 'keyMode', 'timeoutMs', 'instance'],
   auth: ['type', 'token'],
   rateLimiting: ['global', 'perUser'],
   history: ['maxMessages', 'maxTokens'],
