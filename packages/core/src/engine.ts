@@ -15,6 +15,8 @@ import { Router } from './routing/router.js'
 import { Logger, redactParams } from './logger.js'
 import { DEFAULT_MESSAGES } from './messages.js'
 import { validateAIEngineConfig } from './config-validate.js'
+import { NO_OP_TRACER, SpanStatus, setAttr } from './observability/tracer.js'
+import type { SpanLike, TracerLike } from './observability/tracer.js'
 import type { AIEngineConfig, AIEResponse, ChatMessage, MessagesConfig } from './types.js'
 
 export interface HandlerRequest {
@@ -67,6 +69,28 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   const rateLimiter = new RateLimiter(config.rateLimiting ?? {})
   const idempotency = new IdempotencyStore()
   const logger = new Logger()
+  const tracer: TracerLike = config.observability?.tracer ?? NO_OP_TRACER
+
+  // Wrap a function in a tracer span — handles end(), exception recording, and error status uniformly.
+  // Graceful AIE error responses (processMessage's outer try/catch returns these) flag the span via
+  // an inline span.setStatus call; this helper only catches unexpected throws.
+  async function withSpan<T>(name: string, fn: (span: SpanLike) => Promise<T>): Promise<T> {
+    const result = tracer.startActiveSpan(name, async (span) => {
+      try {
+        return await fn(span)
+      } catch (err) {
+        span.recordException(err)
+        span.setStatus({
+          code: SpanStatus.ERROR,
+          message: err instanceof Error ? err.message : String(err),
+        })
+        throw err
+      } finally {
+        span.end()
+      }
+    })
+    return await Promise.resolve(result)
+  }
   const messages: Required<MessagesConfig> = { ...DEFAULT_MESSAGES, ...config.messages }
 
   const maxHistory = config.history?.maxMessages ?? 10
@@ -119,6 +143,25 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     message: string,
     options?: { authToken?: string; userId?: string; history?: ChatMessage[] },
   ): Promise<AIEResponse> {
+    return withSpan('aiglue.processMessage', async (span) => {
+      setAttr(span, 'aiglue.user_id', options?.userId)
+      const result = await processMessageInner(message, options, span)
+      setAttr(span, 'aiglue.response_type', result.type)
+      if (result.type === 'error') {
+        setAttr(span, 'aiglue.error_code', result.code)
+        span.setStatus({ code: SpanStatus.ERROR, message: result.code })
+      } else {
+        span.setStatus({ code: SpanStatus.OK })
+      }
+      return result
+    })
+  }
+
+  async function processMessageInner(
+    message: string,
+    options: { authToken?: string; userId?: string; history?: ChatMessage[] } | undefined,
+    span: SpanLike,
+  ): Promise<AIEResponse> {
     const startMs = Date.now()
     const rateLimitKey = options?.userId ?? 'global'
 
@@ -137,6 +180,10 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       const llmResponse = await resolver.resolve(message, trimmedHistory, route.tools)
       llmTokensIn = llmResponse.tokensIn + route.tokensIn
       llmTokensOut = llmResponse.tokensOut + route.tokensOut
+
+      setAttr(span, 'aiglue.tokens_in', llmTokensIn)
+      setAttr(span, 'aiglue.tokens_out', llmTokensOut)
+      if (route.fellBack) setAttr(span, 'aiglue.routing_fellback', true)
 
       if (!llmResponse.toolCall) {
         const textContent = llmResponse.textContent ?? ''
@@ -160,6 +207,9 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       resolvedParams = params
       const toolDef = registry.getTool(toolName)
       const safeParams = redactParams(resolvedParams, toolDef?.sensitive_params ?? [])
+
+      setAttr(span, 'aiglue.tool_name', toolName)
+      setAttr(span, 'aiglue.risk_level', toolDef?.risk_level ?? 'read')
 
       const safetyResult = safety.check(toolName, params)
 
@@ -265,6 +315,26 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   }
 
   async function confirmAndExecute(
+    toolName: string,
+    params: Record<string, unknown>,
+    options?: { authToken?: string; idempotencyKey?: string },
+  ): Promise<AIEResponse> {
+    return withSpan('aiglue.confirmAndExecute', async (span) => {
+      setAttr(span, 'aiglue.tool_name', toolName)
+      setAttr(span, 'aiglue.idempotency_key_present', !!options?.idempotencyKey)
+      const result = await confirmAndExecuteInner(toolName, params, options)
+      setAttr(span, 'aiglue.response_type', result.type)
+      if (result.type === 'error') {
+        setAttr(span, 'aiglue.error_code', result.code)
+        span.setStatus({ code: SpanStatus.ERROR, message: result.code })
+      } else {
+        span.setStatus({ code: SpanStatus.OK })
+      }
+      return result
+    })
+  }
+
+  async function confirmAndExecuteInner(
     toolName: string,
     params: Record<string, unknown>,
     options?: { authToken?: string; idempotencyKey?: string },

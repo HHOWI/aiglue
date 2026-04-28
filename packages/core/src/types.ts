@@ -160,9 +160,17 @@ export interface AIEngineConfig {
   executor?: ExecutorConfig
   hotReload?: HotReloadConfig
   routing?: RoutingConfig
+  observability?: ObservabilityConfig
   /** When true, the engine registers SIGTERM and SIGINT handlers that call dispose() automatically.
    *  Default false — the host (Express, Koa, Fastify, …) usually owns shutdown signals. */
   disposeOnSignal?: boolean
+}
+
+export interface ObservabilityConfig {
+  /** OpenTelemetry-compatible tracer. Pass `trace.getTracer('aiglue')` from `@opentelemetry/api` to
+   *  emit spans for processMessage / confirmAndExecute. Type is intentionally structural so aiglue
+   *  does not pin a specific OTel SDK version. */
+  tracer?: import('./observability/tracer.js').TracerLike
 }
 
 export interface RoutingConfig {

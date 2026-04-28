@@ -328,6 +328,21 @@ if (!result.ok) console.error('reload failed:', result.error)
 
 Reload is atomic — parse / validation failures leave the existing registry intact.
 
+#### Observability (OpenTelemetry tracing)
+
+Pass any `@opentelemetry/api`-compatible tracer; the engine emits one root span per `processMessage` / `confirmAndExecute` call:
+
+```ts
+import { trace } from '@opentelemetry/api'
+
+const engine = createAIEngine({
+  // ...
+  observability: { tracer: trace.getTracer('aiglue') },
+})
+```
+
+Each span is tagged with `aiglue.tool_name`, `aiglue.risk_level`, `aiglue.response_type`, `aiglue.tokens_in` / `aiglue.tokens_out`, `aiglue.user_id`, and on failure `aiglue.error_code`. Status is `OK` on success, `ERROR` with the code as the message on engine-domain errors. With OTel auto-instrumentation for `fetch` enabled, the upstream HTTP call shows up as a child span automatically. Default is no-op — no observability stack required to run.
+
 #### Prompt caching
 
 | Provider | How aiglue handles it | Cache TTL | Discount on hit |

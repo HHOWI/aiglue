@@ -326,6 +326,21 @@ if (!result.ok) console.error('reload failed:', result.error)
 
 reload는 atomic — 파싱·검증 실패 시 기존 registry는 그대로 살아있습니다.
 
+#### Observability (OpenTelemetry tracing)
+
+`@opentelemetry/api` 호환 tracer를 넘기면 `processMessage` / `confirmAndExecute` 마다 root span을 발행합니다:
+
+```ts
+import { trace } from '@opentelemetry/api'
+
+const engine = createAIEngine({
+  // ...
+  observability: { tracer: trace.getTracer('aiglue') },
+})
+```
+
+각 span에는 `aiglue.tool_name`·`aiglue.risk_level`·`aiglue.response_type`·`aiglue.tokens_in`/`aiglue.tokens_out`·`aiglue.user_id`가 attribute로 붙고, 실패 시 `aiglue.error_code` + status `ERROR`. 성공 시 status `OK`. OTel `fetch` auto-instrumentation을 켜두면 업스트림 HTTP 호출이 자식 span으로 자동 attach됩니다. 기본값은 no-op이라 observability 스택이 없어도 그대로 동작합니다.
+
 #### Prompt caching — 프로바이더별 동작
 
 | 프로바이더 | aiglue 처리 방식 | 캐시 TTL | hit 시 할인 |

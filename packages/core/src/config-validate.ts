@@ -8,7 +8,8 @@ import type { AIEngineConfig } from './types.js'
 const ALLOWED: Record<string, readonly string[]> = {
   root: [
     'tools', 'domainDocs', 'llm', 'auth', 'rateLimiting', 'baseUrl',
-    'history', 'messages', 'executor', 'hotReload', 'routing', 'disposeOnSignal',
+    'history', 'messages', 'executor', 'hotReload', 'routing',
+    'observability', 'disposeOnSignal',
   ],
   llm: ['provider', 'apiKey', 'model', 'baseUrl', 'keyMode', 'timeoutMs'],
   auth: ['type', 'token'],
@@ -21,6 +22,7 @@ const ALLOWED: Record<string, readonly string[]> = {
   executor: ['timeoutMs', 'maxResponseBytes'],
   hotReload: ['pollIntervalMs'],
   routing: ['strategy', 'twoStageThreshold'],
+  observability: ['tracer'],
 }
 
 function checkKeys(obj: Record<string, unknown>, group: keyof typeof ALLOWED, path: string): void {
@@ -52,4 +54,5 @@ export function validateAIEngineConfig(config: AIEngineConfig): void {
   if (config.executor) checkKeys(config.executor as unknown as Record<string, unknown>, 'executor', 'AIEngineConfig.executor')
   if (config.hotReload) checkKeys(config.hotReload as unknown as Record<string, unknown>, 'hotReload', 'AIEngineConfig.hotReload')
   if (config.routing) checkKeys(config.routing as unknown as Record<string, unknown>, 'routing', 'AIEngineConfig.routing')
+  if (config.observability) checkKeys(config.observability as unknown as Record<string, unknown>, 'observability', 'AIEngineConfig.observability')
 }
