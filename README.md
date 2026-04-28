@@ -144,6 +144,16 @@ Response:
 
 **Your frontend renders this however you want.** aiglue gives you structured data, not opinionated UI.
 
+For React projects, [`@aiglue/client`](./packages/client/) wraps the boilerplate (confirm-token echo, multi-turn history, transport vs engine error split):
+
+```tsx
+import { useAIGlue } from '@aiglue/client'
+
+const { send, sendConfirm, result, loading } = useAIGlue({ endpoint: '/ai/chat' })
+// result.type → 'text' | 'table' | 'summary' | 'action' | 'confirm' | 'error' | …
+// sendConfirm() echoes the confirmToken from the last confirm response automatically.
+```
+
 ## How It Works
 
 ```
@@ -567,7 +577,8 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] OpenAI-compatible provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM, etc.)
 - [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — expose tools.yaml as an MCP server over stdio (Claude Desktop, Cursor, Cline, …)
-- [ ] `@aiglue/client` (React/Vue hooks)
+- [x] `@aiglue/client` — headless React hook for `/ai/chat` (auto confirm-token echo, multi-turn history)
+- [ ] Vue / Svelte adapters
 - [ ] SSE / Streamable HTTP transport for the MCP server
 - [ ] `npx aiglue generate-mcp` — emit a standalone MCP server config bundle for distribution
 - [ ] `npx aiglue init --swagger` (generate tools.yaml from OpenAPI spec)

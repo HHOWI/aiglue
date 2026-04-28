@@ -8,7 +8,8 @@ aiglue는 `tools.yaml` 하나로 기존 REST API를 자연어 인터페이스로
 
 ## Repository layout (pnpm workspace)
 
-- `packages/core/` — `@aiglue/core`, 유일한 배포 대상 패키지. 엔진·실행기·프로바이더·검증기·CLI가 모두 여기에 있다. 주요 하위 경로: `src/{cli,validate,providers}/`, `schema/` (공식 JSON Schema), `assets/` (Claude skill·Cursor rule·tools.yaml 스켈레톤 — `aiglue init`이 배포).
+- `packages/core/` — `@aiglue/core`, 서버 사이드 핵심 패키지. 엔진·실행기·프로바이더·검증기·CLI·MCP 서버가 모두 여기에 있다. 주요 하위 경로: `src/{cli,validate,providers,routing,mcp}/`, `schema/` (공식 JSON Schema), `assets/` (Claude skill·Cursor rule·tools.yaml 스켈레톤 — `aiglue init`이 배포).
+- `packages/client/` — `@aiglue/client`, headless React hook 패키지. `useAIGlue({ endpoint })`가 send / sendConfirm / result / history / loading / error / reset를 반환. confirm 토큰 자동 echo, 멀티턴 history 누적, 전송 에러와 엔진 에러 분리. React 18·19 peer. Vitest + happy-dom.
 - `examples/minimal/` — JSONPlaceholder로 동작하는 최소 Express 예제. 새 기능은 가능하면 여기서 end-to-end로도 확인한다.
 - `docs/superpowers/` — 스펙(`specs/`)과 구현 계획(`plans/`) 아카이브.
 - `tsconfig.base.json` — 루트 공통 TS 설정 (`strict`, `moduleResolution: bundler`, ESM). 각 패키지는 이것을 extends.
@@ -34,6 +35,9 @@ pnpm --filter @aiglue/core test
 pnpm --filter @aiglue/core test:watch
 pnpm --filter @aiglue/core exec vitest run tests/engine.test.ts   # 특정 파일만
 pnpm --filter @aiglue/core exec vitest run -t "should return confirm"  # 특정 테스트명만
+
+pnpm --filter @aiglue/client build
+pnpm --filter @aiglue/client test    # vitest + happy-dom + React Testing Library
 ```
 
 예제 실행:
@@ -128,4 +132,8 @@ processMessage(userText, { authToken, userId, history })
   - 엔진 stateless history 릴레이 (default 10개 윈도우 + optional 토큰 예산)
   - README 프레임워크 예시 카탈로그 (Express / FastAPI / Spring)
   - **운영 강화 (2026-04-28)**: path injection 방어(`encodeURIComponent`), LLM/HTTP 타임아웃(`LLMConfig.timeoutMs` 30s, `ExecutorConfig.timeoutMs` 10s), 에러 메시지 sanitize(원본 logger에만), confirm 멱등성(`IdempotencyStore` + `confirmToken`), 응답 크기 cap(`maxResponseBytes` 5MB stream-read), RateLimiter 백그라운드 sweep, history 토큰 예산 윈도잉, Anthropic prompt caching(자동 적용), tools.yaml hot reload(`engine.reload()` + 폴링). `engine.dispose()`로 백그라운드 타이머 정리.
-- 미구현(의도적 공백): `@aiglue/client`, `@aiglue/mcp`, `npx aiglue generate-mcp`, `npx aiglue import-openapi` (1.5차), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로. 큰 도구 카탈로그(50+) 대비 인덱스 라우팅은 설계 스펙만 작성 (`docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`) — trigger 조건 충족 시 구현. 설계 결정은 `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md` 참고.
+- 추가 구현됨 (2026-04-28 후반):
+  - `@aiglue/core` MCP server: `aiglue mcp serve --tools <path> --base-url <url>` + programmatic `createMCPServer()`. stdio transport, `AIGLUE_AUTH_TOKEN` env passthrough, risk_level description 프리픽스로 호스트 confirm UI 트리거. SSE/Streamable HTTP는 미구현.
+  - `@aiglue/client`: headless React hook (`useAIGlue`), confirm 토큰 자동 echo + 멀티턴 history 자동 누적. Vue/Svelte 어댑터는 미구현.
+  - Tool-index 2-stage routing: explicit opt-in (`routing.strategy: 'two-stage'`)으로 stage-1 LLM이 인덱스에서 후보 선택 후 stage-2가 전체 정의로 resolve. fallback은 단순 single-stage. auto threshold 모드는 미구현.
+- 미구현(의도적 공백): Vue/Svelte 클라이언트 어댑터, `@aiglue/mcp` 별도 패키지(현재 `@aiglue/core`에 통합), `npx aiglue generate-mcp`(README 예시로 대체), `npx aiglue import-openapi` (1.5차), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로, MCP SSE/Streamable HTTP transport, 토큰 streaming 응답, OpenTelemetry observability 훅, tool-index `auto` 임계값. 설계 스펙: `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 등. 방향성: `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md`.

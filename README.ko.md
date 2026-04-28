@@ -142,6 +142,16 @@ curl -X POST http://localhost:3100/ai/chat \
 
 **프론트엔드에서 원하는 대로 렌더링하세요.** aiglue는 구조화된 데이터를 반환할 뿐, UI를 강제하지 않습니다.
 
+React 프로젝트라면 [`@aiglue/client`](./packages/client/)가 보일러플레이트(confirm 토큰 echo, 멀티턴 히스토리, 전송 vs 엔진 에러 분리)를 대신 처리해줍니다:
+
+```tsx
+import { useAIGlue } from '@aiglue/client'
+
+const { send, sendConfirm, result, loading } = useAIGlue({ endpoint: '/ai/chat' })
+// result.type → 'text' | 'table' | 'summary' | 'action' | 'confirm' | 'error' | …
+// sendConfirm()은 직전 confirm 응답의 confirmToken을 자동으로 echo합니다.
+```
+
 ## 작동 원리
 
 ```
@@ -565,7 +575,8 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] OpenAI 호환 Provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM 등)
 - [x] 운영 강화 (LLM·HTTP 타임아웃, 응답 크기 cap, history 토큰 예산, confirm 멱등성, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — `tools.yaml`을 stdio 기반 MCP 서버로 노출 (Claude Desktop · Cursor · Cline …)
-- [ ] `@aiglue/client` (React/Vue hooks)
+- [x] `@aiglue/client` — `/ai/chat` 용 headless React hook (confirm 토큰 자동 echo, 멀티턴 히스토리)
+- [ ] Vue / Svelte 어댑터
 - [ ] MCP SSE / Streamable HTTP transport
 - [ ] `npx aiglue generate-mcp` — 배포용 독립 MCP 서버 config 번들 생성
 - [ ] `npx aiglue init --swagger` (OpenAPI 스펙에서 tools.yaml 생성)
