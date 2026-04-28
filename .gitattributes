@@ -1,0 +1,17 @@
+# Normalize text files to LF inside the repo, regardless of contributor OS.
+# Working trees on Windows still get CRLF on checkout if core.autocrlf=true,
+# but the repo content stays consistent.
+* text=auto eol=lf
+
+# Lockfiles + JSON: machine-generated, always LF.
+pnpm-lock.yaml text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Binary types — never normalize.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
