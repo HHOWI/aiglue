@@ -41,6 +41,45 @@ function startMockServer(response: unknown): Promise<MockServer> {
   })
 }
 
+describe('ClaudeProvider.resolve() — prompt caching', () => {
+  it('marks the last tool and the system block with cache_control: ephemeral', async () => {
+    const server = await startMockServer({
+      id: 'msg_1',
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    })
+    const provider = new ClaudeProvider('test-key')
+    // @ts-expect-error — override baseURL for the test
+    provider['client'].baseURL = server.url
+
+    await provider.resolve(
+      [
+        { role: 'system', content: 'You are a router.' },
+        { role: 'user', content: 'show users' },
+      ],
+      [
+        { name: 'a', description: 'A', parameters: { type: 'object', properties: {} } },
+        { name: 'b', description: 'B', parameters: { type: 'object', properties: {} } },
+      ],
+    )
+
+    const body = JSON.parse(server.lastBody())
+    // Only the last tool gets a cache breakpoint — caches the full tools prefix.
+    expect(body.tools[0].cache_control).toBeUndefined()
+    expect(body.tools[1].cache_control).toEqual({ type: 'ephemeral' })
+    // System is sent as a text-block array with its own breakpoint.
+    expect(Array.isArray(body.system)).toBe(true)
+    expect(body.system[0]).toMatchObject({
+      type: 'text',
+      text: 'You are a router.',
+      cache_control: { type: 'ephemeral' },
+    })
+    await server.close()
+  })
+})
+
 describe('ClaudeProvider.chat()', () => {
   it('returns text + token usage', async () => {
     const server = await startMockServer({

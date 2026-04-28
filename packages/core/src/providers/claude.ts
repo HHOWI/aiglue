@@ -23,16 +23,32 @@ export class ClaudeProvider implements LLMProvider {
         content: m.content,
       }))
 
-    const anthropicTools = tools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.parameters as Anthropic.Tool['input_schema'],
-    }))
+    // Mark the last tool with cache_control to cache the entire tools+system prefix
+    // (Anthropic prompt caching, ephemeral 5-min TTL — gives ~90% discount on cache hits).
+    const anthropicTools: Anthropic.Tool[] = tools.map((t, idx) => {
+      const base: Anthropic.Tool = {
+        name: t.name,
+        description: t.description,
+        input_schema: t.parameters as Anthropic.Tool['input_schema'],
+      }
+      if (idx === tools.length - 1) {
+        base.cache_control = { type: 'ephemeral' }
+      }
+      return base
+    })
+
+    const systemBlocks: Anthropic.TextBlockParam[] | undefined = systemMessage?.content
+      ? [{
+          type: 'text',
+          text: systemMessage.content,
+          cache_control: { type: 'ephemeral' },
+        }]
+      : undefined
 
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 1024,
-      system: systemMessage?.content,
+      system: systemBlocks,
       messages: chatMessages,
       tools: anthropicTools,
     })
