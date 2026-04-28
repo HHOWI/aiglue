@@ -16,6 +16,13 @@ aiglue는 `tools.yaml` 하나로 기존 REST API를 자연어 인터페이스로
 - `tsconfig.base.json` — 루트 공통 TS 설정 (`strict`, `moduleResolution: bundler`, ESM). 각 패키지는 이것을 extends.
 - `pnpm-workspace.yaml`이 `packages/*`와 `examples/*`를 워크스페이스로 선언한다.
 
+## Release / CI
+
+- `.github/workflows/ci.yml` — PR/push 시 Node 18·20·22 (Ubuntu) + macOS·Windows smoke 매트릭스로 build + test 실행. README에 패스 배지 노출.
+- `.github/workflows/release.yml` — `v*` tag push 시 build + test + publint 통과 후 `@aiglue/core`·`@aiglue/client`·`@aiglue/client-vue` 순서로 npm publish. npm provenance 활성화. GitHub Release 자동 생성.
+- 사전 setup (1회): `RELEASING.md` 참고 — `@aiglue` npm org 생성 + `NPM_TOKEN` GitHub secret 등록.
+- 릴리즈 절차: 각 패키지 version bump → `CHANGELOG`의 `[Unreleased]` → 버전 섹션 이동 → commit → `git tag v<version>` push.
+
 ## Commands
 
 루트에서:

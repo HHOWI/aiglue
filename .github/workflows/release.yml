@@ -1,0 +1,70 @@
+name: Release
+
+# Fires when a `v*` tag is pushed (e.g., `git tag v0.3.0 && git push origin v0.3.0`).
+# Builds + tests + publint-checks, then publishes every public package in topological order.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    name: build + verify + npm publish
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for npm provenance — links the published tarball back to this workflow run.
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm -r build
+
+      - name: Run full test suite
+        run: pnpm -r test
+
+      - name: Verify package shape (publint)
+        # publint catches the "builds but cannot be imported" class of errors before they hit npm.
+        run: |
+          pnpm dlx publint packages/core
+          pnpm dlx publint packages/client
+          pnpm dlx publint packages/client-vue
+
+      - name: Publish @aiglue/core
+        run: pnpm --filter @aiglue/core publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @aiglue/client
+        run: pnpm --filter @aiglue/client publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @aiglue/client-vue
+        run: pnpm --filter @aiglue/client-vue publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+          # Release body is auto-derived from commits since the previous tag — CHANGELOG.md
+          # remains the canonical hand-written record under each [version] section.

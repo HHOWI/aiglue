@@ -1,6 +1,6 @@
 # aiglue
 
-[한국어](./README.ko.md)
+[한국어](./README.ko.md) · [![CI](https://github.com/HHOWI/aiglue/actions/workflows/ci.yml/badge.svg)](https://github.com/HHOWI/aiglue/actions/workflows/ci.yml)
 
 **YAML config turns any REST API into an AI-powered natural language interface.**
 
