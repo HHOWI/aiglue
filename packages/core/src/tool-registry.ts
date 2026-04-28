@@ -2,9 +2,18 @@ import { readFileSync } from 'fs'
 import { parse } from 'yaml'
 import type { ToolsConfig, ToolDefinition, LLMToolDefinition } from './types.js'
 
+export interface ToolIndexEntry {
+  name: string
+  /** Description condensed to ~80 chars for cheap stage-1 routing. */
+  shortDescription: string
+  /** Up to 2 example queries — kept on the index because LLM precision improves a lot with examples. */
+  examples: string[]
+}
+
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition>
   private llmToolsCache: LLMToolDefinition[] | null = null
+  private indexCache: ToolIndexEntry[] | null = null
 
   private constructor(config: ToolsConfig) {
     this.tools = new Map()
@@ -42,6 +51,7 @@ export class ToolRegistry {
     }
     this.tools = next
     this.llmToolsCache = null
+    this.indexCache = null
   }
 
   getTool(name: string): ToolDefinition | undefined {
@@ -74,6 +84,28 @@ export class ToolRegistry {
   toLLMTools(): LLMToolDefinition[] {
     // Computed once — registry is immutable after construction
     return (this.llmToolsCache ??= this.buildLLMTools())
+  }
+
+  /** Lightweight per-tool summary for stage-1 routing in two-stage mode. ~30–50 tokens per entry. */
+  toIndex(): ToolIndexEntry[] {
+    return (this.indexCache ??= this.buildIndex())
+  }
+
+  /** Subset of the registry restricted to the given tool names. Caller already validated the names exist. */
+  toLLMToolsSubset(names: string[]): LLMToolDefinition[] {
+    const wanted = new Set(names)
+    return this.toLLMTools().filter((t) => wanted.has(t.name))
+  }
+
+  private buildIndex(): ToolIndexEntry[] {
+    return this.getAllTools().map((tool) => {
+      const firstSentence = tool.description.split(/\.\s|\n/)[0]
+      const shortDescription = firstSentence.length > 80
+        ? firstSentence.slice(0, 80).trimEnd() + '…'
+        : firstSentence
+      const examples = (tool.examples ?? []).slice(0, 2)
+      return { name: tool.name, shortDescription, examples }
+    })
   }
 
   private buildLLMTools(): LLMToolDefinition[] {

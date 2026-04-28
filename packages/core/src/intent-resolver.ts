@@ -1,5 +1,5 @@
 import type { LLMProvider } from './providers/types.js'
-import type { LLMResponse, ChatMessage } from './types.js'
+import type { LLMResponse, ChatMessage, LLMToolDefinition } from './types.js'
 import { ToolRegistry } from './tool-registry.js'
 
 const SYSTEM_PROMPT = `You are an AI assistant that helps users interact with an existing system through natural language.
@@ -27,7 +27,12 @@ export class IntentResolver {
     this.domainContext = domainContext ?? null
   }
 
-  async resolve(userInput: string, conversationHistory?: ChatMessage[]): Promise<LLMResponse> {
+  async resolve(
+    userInput: string,
+    conversationHistory?: ChatMessage[],
+    /** Optional pre-filtered subset (e.g. supplied by the Router). Defaults to the full registry. */
+    toolsOverride?: LLMToolDefinition[],
+  ): Promise<LLMResponse> {
     const messages: ChatMessage[] = []
 
     let systemContent = SYSTEM_PROMPT
@@ -42,7 +47,7 @@ export class IntentResolver {
 
     messages.push({ role: 'user', content: userInput })
 
-    const tools = this.registry.toLLMTools()
+    const tools = toolsOverride ?? this.registry.toLLMTools()
 
     return this.provider.resolve(messages, tools)
   }

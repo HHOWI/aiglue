@@ -11,6 +11,7 @@ import { ResponseFormatter } from './response-formatter.js'
 import { Summarizer } from './summarizer.js'
 import { RateLimiter } from './rate-limiter.js'
 import { IdempotencyStore } from './idempotency.js'
+import { Router } from './routing/router.js'
 import { Logger, redactParams } from './logger.js'
 import { DEFAULT_MESSAGES } from './messages.js'
 import { validateAIEngineConfig } from './config-validate.js'
@@ -106,10 +107,12 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
 
   let resolver = new IntentResolver(provider, registry)
   let summarizer = new Summarizer(provider, logger)
+  let router = new Router(provider, registry, config.routing)
 
   function rebuildResolver(): void {
     resolver = new IntentResolver(provider, registry)
     summarizer = new Summarizer(provider, logger)
+    router = new Router(provider, registry, config.routing)
   }
 
   async function processMessage(
@@ -130,9 +133,10 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
 
     try {
       const trimmedHistory = trimHistory(options?.history)
-      const llmResponse = await resolver.resolve(message, trimmedHistory)
-      llmTokensIn = llmResponse.tokensIn
-      llmTokensOut = llmResponse.tokensOut
+      const route = await router.decide(message, trimmedHistory)
+      const llmResponse = await resolver.resolve(message, trimmedHistory, route.tools)
+      llmTokensIn = llmResponse.tokensIn + route.tokensIn
+      llmTokensOut = llmResponse.tokensOut + route.tokensOut
 
       if (!llmResponse.toolCall) {
         const textContent = llmResponse.textContent ?? ''

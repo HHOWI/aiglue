@@ -23,7 +23,9 @@ All notable changes to `@aiglue/core` are documented here. The format follows [K
 - **`MessagesConfig.upstreamError`** for i18n of the new generic upstream-error message.
 - **Path injection defense.** Path params are now URL-encoded with `encodeURIComponent` before substitution.
 - **RateLimiter background sweep.** A `setInterval`-based janitor (default 60 s, `.unref`'d) drops expired entries so the in-memory map can no longer grow unbounded under bursty `userId` churn. Disable with `sweepIntervalMs: 0`.
-- **Tool-index 2-stage routing — design spec only.** `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` captures the design for cutting per-request token cost when `tools.yaml` grows past ~30 entries. Implementation deferred behind the documented trigger.
+- **Tool-index 2-stage routing — explicit opt-in.** Set `routing.strategy: 'two-stage'` and a stage-1 LLM call picks the relevant tool subset from a lightweight per-tool index (name + 1-line description + 2 examples) before the main resolver sees only those candidates' full schemas. Falls back to the full catalog if stage 1 returns nothing usable or the call itself fails — never blocks the request. Default `'single'` (no behavior change). Auto-threshold mode from the design spec is deferred. Spec: `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`.
+- **Strict config key validation at boot.** `createAIEngine()` throws on unknown keys at every documented level (`AIEngineConfig`, `executor`, `history`, `messages`, etc.) — typos like `executor.timoutMs` fail fast instead of silently using defaults.
+- **Optional `disposeOnSignal: true`** registers SIGTERM / SIGINT handlers that call `engine.dispose()`. Off by default so the host owns shutdown semantics.
 
 ### Changed
 
