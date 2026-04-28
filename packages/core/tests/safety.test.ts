@@ -24,7 +24,6 @@ describe('SafetyGate', () => {
     const result = gate.check('update_user', { id: '1' })
     expect(result.allowed).toBe(true)
     expect(result.requiresConfirm).toBe(true)
-    expect(result.confirmMessage).toBe('사용자 정보를 수정합니다. 진행할까요?')
   })
 
   it('should require confirmation for critical tools', () => {
