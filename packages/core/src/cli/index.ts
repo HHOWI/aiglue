@@ -15,9 +15,9 @@ async function main(): Promise<void> {
       'aiglue <subcommand> [options]\n' +
       '\n' +
       'subcommands:\n' +
-      '  lint <file>   Validate tools.yaml against schema and semantic rules\n' +
-      '  init          Install IDE AI assets and a tools.yaml skeleton\n' +
-      '  mcp serve     Expose tools.yaml as an MCP server over stdio\n',
+      '  lint <file>                       Validate tools.yaml against schema and semantic rules\n' +
+      '  init [--swagger <path-or-url>]    Install IDE AI assets and a tools.yaml (skeleton or generated from OpenAPI 3)\n' +
+      '  mcp serve                         Expose tools.yaml as an MCP server over stdio\n',
     )
     process.exit(0)
   }

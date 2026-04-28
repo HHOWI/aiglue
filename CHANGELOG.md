@@ -2,6 +2,12 @@
 
 All notable changes to `@aiglue/core` are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`aiglue init --swagger <path-or-url>`** generates `tools.yaml` from an OpenAPI 3.x document (file or http(s) URL, JSON or YAML auto-detected). Heuristics: `risk_level` from HTTP method (GET → read, POST/PUT/PATCH → write, DELETE → critical); `response_type: table` when the success response is an array; path templates `{id}` rewritten to `:id`; `requestBody` JSON properties flattened to top-level params; `$ref` resolved against `#/components/{parameters,schemas,requestBodies,responses}`; deprecated operations skipped; header / cookie params skipped (auth lives via `authToken`); duplicate `operationId`s suffixed `_2`, `_3`, …; `examples` and `confirm_message` left empty by design — the operator fills the human-friendly bits before shipping. Swagger 2.0 input is rejected with a clear error.
+
 ## [0.2.0] — 2026-04-28
 
 ### Breaking changes

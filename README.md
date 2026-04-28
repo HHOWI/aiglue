@@ -43,6 +43,11 @@ Build chat UI
 ```bash
 npm install @aiglue/core
 npx aiglue init     # Copies IDE AI skill + rule + tools.yaml skeleton
+
+# Already have an OpenAPI 3 spec? Skip the skeleton and generate tools.yaml from it:
+npx aiglue init --swagger https://api.example.com/openapi.json
+# or a local file:
+npx aiglue init --swagger ./openapi.yaml
 ```
 
 After `init`, your IDE AI (Claude Code, Cursor) knows how to edit `tools.yaml` correctly. Run `npx aiglue lint tools.yaml` after edits.
@@ -578,6 +583,7 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — expose tools.yaml as an MCP server over stdio (Claude Desktop, Cursor, Cline, …)
 - [x] `@aiglue/client` — headless React hook for `/ai/chat` (auto confirm-token echo, multi-turn history)
+- [x] `npx aiglue init --swagger <path-or-url>` — generate `tools.yaml` from an OpenAPI 3.x spec
 - [ ] Vue / Svelte adapters
 - [ ] SSE / Streamable HTTP transport for the MCP server
 - [ ] `npx aiglue generate-mcp` — emit a standalone MCP server config bundle for distribution

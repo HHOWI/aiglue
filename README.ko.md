@@ -41,6 +41,11 @@ Tool 코드 45개 작성     npm install @aiglue/core
 ```bash
 npm install @aiglue/core
 npx aiglue init     # IDE AI 스킬·룰·tools.yaml 스켈레톤 복사
+
+# OpenAPI 3 스펙이 이미 있다면, 스켈레톤 대신 그 스펙으로 tools.yaml 자동 생성:
+npx aiglue init --swagger https://api.example.com/openapi.json
+# 또는 로컬 파일:
+npx aiglue init --swagger ./openapi.yaml
 ```
 
 `init` 후 Claude Code·Cursor 같은 IDE AI가 `tools.yaml` 편집 방법을 바로 안다. 편집 후에는 `npx aiglue lint tools.yaml`.
@@ -576,6 +581,7 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] 운영 강화 (LLM·HTTP 타임아웃, 응답 크기 cap, history 토큰 예산, confirm 멱등성, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — `tools.yaml`을 stdio 기반 MCP 서버로 노출 (Claude Desktop · Cursor · Cline …)
 - [x] `@aiglue/client` — `/ai/chat` 용 headless React hook (confirm 토큰 자동 echo, 멀티턴 히스토리)
+- [x] `npx aiglue init --swagger <path-or-url>` — OpenAPI 3.x 스펙에서 `tools.yaml` 자동 생성
 - [ ] Vue / Svelte 어댑터
 - [ ] MCP SSE / Streamable HTTP transport
 - [ ] `npx aiglue generate-mcp` — 배포용 독립 MCP 서버 config 번들 생성
