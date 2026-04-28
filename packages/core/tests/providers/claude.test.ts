@@ -105,6 +105,33 @@ describe('ClaudeProvider.chat()', () => {
     await server.close()
   })
 
+  it('aborts request when LLM call exceeds configured timeout', async () => {
+    // Server that never responds — timeout must trigger
+    const slowServer: Server = createServer(() => {
+      // intentionally do nothing — keep request hanging
+    })
+    const port = await new Promise<number>((r) => {
+      slowServer.listen(0, () => {
+        const addr = slowServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const provider = new ClaudeProvider('test-key', 'claude-sonnet-4-20250514', 100)
+    // @ts-expect-error — override baseURL for the test
+    provider['client'].baseURL = `http://localhost:${port}`
+
+    const start = Date.now()
+    await expect(
+      provider.chat([{ role: 'user', content: 'hi' }]),
+    ).rejects.toThrow()
+    const elapsed = Date.now() - start
+    // Allow generous slack — SDK retries and OS-level delays vary
+    expect(elapsed).toBeLessThan(10_000)
+
+    await new Promise<void>((r) => slowServer.close(() => r()))
+  }, 15_000)
+
   it('returns empty text when content array has no text blocks', async () => {
     const server = await startMockServer({
       id: 'msg_1',

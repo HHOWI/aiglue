@@ -6,8 +6,8 @@ export class ClaudeProvider implements LLMProvider {
   private client: Anthropic
   private model: string
 
-  constructor(apiKey: string, model?: string) {
-    this.client = new Anthropic({ apiKey })
+  constructor(apiKey: string, model?: string, timeoutMs?: number) {
+    this.client = new Anthropic({ apiKey, timeout: timeoutMs ?? 30_000 })
     this.model = model ?? 'claude-sonnet-4-20250514'
   }
 

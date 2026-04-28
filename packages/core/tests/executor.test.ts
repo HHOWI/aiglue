@@ -200,4 +200,105 @@ describe('Executor', () => {
       executor.execute('get_item', {})
     ).rejects.toThrow('Missing required path param')
   })
+
+  it('should reject responses with Content-Length over maxResponseBytes', async () => {
+    const registry = ToolRegistry.fromConfig({
+      tools_yaml_version: '1.0',
+      tools: [{
+        name: 'big',
+        description: 'big',
+        endpoint: 'GET /api/big',
+        params: {},
+      }],
+    })
+    const huge = 'x'.repeat(2000)
+    const bigServer = createServer((_req, res) => {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Length': String(Buffer.byteLength(huge, 'utf-8')),
+      })
+      res.end(huge)
+    })
+    const bigPort = await new Promise<number>((r) => {
+      bigServer.listen(0, () => {
+        const addr = bigServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const exec = new Executor(registry, `http://localhost:${bigPort}`, 10_000, 1000)
+    await expect(exec.execute('big', {})).rejects.toThrow('exceeds maxResponseBytes')
+    await new Promise<void>((r) => bigServer.close(() => r()))
+  })
+
+  it('should reject chunked responses that exceed maxResponseBytes during streaming', async () => {
+    const registry = ToolRegistry.fromConfig({
+      tools_yaml_version: '1.0',
+      tools: [{
+        name: 'chunked',
+        description: 'chunked',
+        endpoint: 'GET /api/chunked',
+        params: {},
+      }],
+    })
+    const chunkedServer = createServer((_req, res) => {
+      // Omit Content-Length → chunked transfer
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.write('x'.repeat(500))
+      res.write('x'.repeat(500))
+      res.write('x'.repeat(500))
+      res.end()
+    })
+    const chunkedPort = await new Promise<number>((r) => {
+      chunkedServer.listen(0, () => {
+        const addr = chunkedServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const exec = new Executor(registry, `http://localhost:${chunkedPort}`, 10_000, 1000)
+    await expect(exec.execute('chunked', {})).rejects.toThrow('exceeds maxResponseBytes')
+    await new Promise<void>((r) => chunkedServer.close(() => r()))
+  })
+
+  it('should URL-encode path params to prevent path injection', async () => {
+    const registry = ToolRegistry.fromConfig({
+      tools_yaml_version: '1.0',
+      tools: [{
+        name: 'get_item',
+        description: 'Get item',
+        endpoint: 'GET /api/items/:id',
+        params: {
+          id: { description: 'Item ID', type: 'string', required: true },
+        },
+      }],
+    })
+    let capturedUrl = ''
+    const captureServer = createServer((req, res) => {
+      capturedUrl = req.url ?? ''
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true }))
+    })
+    const capturePort = await new Promise<number>((r) => {
+      captureServer.listen(0, () => {
+        const addr = captureServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+    const execCapture = new Executor(registry, `http://localhost:${capturePort}`)
+
+    // Path traversal attempt: ".." should be encoded
+    await execCapture.execute('get_item', { id: '../admin/users' })
+    expect(capturedUrl).toBe('/api/items/..%2Fadmin%2Fusers')
+
+    // Slash should be encoded (not break out of path segment)
+    await execCapture.execute('get_item', { id: 'a/b' })
+    expect(capturedUrl).toBe('/api/items/a%2Fb')
+
+    // Query/fragment chars should be encoded
+    await execCapture.execute('get_item', { id: 'x?y=1#z' })
+    expect(capturedUrl).toBe('/api/items/x%3Fy%3D1%23z')
+
+    captureServer.close()
+  })
 })

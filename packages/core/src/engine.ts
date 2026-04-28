@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { ToolRegistry } from './tool-registry.js'
 import { ClaudeProvider } from './providers/claude.js'
 import { OpenAIProvider } from './providers/openai.js'
@@ -8,6 +9,7 @@ import { Executor } from './executor.js'
 import { ResponseFormatter } from './response-formatter.js'
 import { Summarizer } from './summarizer.js'
 import { RateLimiter } from './rate-limiter.js'
+import { IdempotencyStore } from './idempotency.js'
 import { Logger, redactParams } from './logger.js'
 import { DEFAULT_MESSAGES } from './messages.js'
 import type { AIEngineConfig, AIEResponse, ChatMessage, MessagesConfig } from './types.js'
@@ -21,6 +23,7 @@ export interface HandlerRequest {
     toolName?: string
     params?: Record<string, unknown>
     history?: ChatMessage[]
+    idempotencyKey?: string
   }
 }
 
@@ -36,7 +39,7 @@ export interface AIEngine {
   confirmAndExecute(
     toolName: string,
     params: Record<string, unknown>,
-    options?: { authToken?: string },
+    options?: { authToken?: string; idempotencyKey?: string },
   ): Promise<AIEResponse>
   handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void>
   /** @internal testing only */
@@ -47,17 +50,39 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   const registry = ToolRegistry.fromFile(config.tools)
   const formatter = new ResponseFormatter()
   const safety = new SafetyGate(registry)
-  const executor = new Executor(registry, config.baseUrl ?? 'http://localhost:3000')
+  const executor = new Executor(
+    registry,
+    config.baseUrl ?? 'http://localhost:3000',
+    config.executor?.timeoutMs,
+    config.executor?.maxResponseBytes,
+  )
   const rateLimiter = new RateLimiter(config.rateLimiting ?? {})
+  const idempotency = new IdempotencyStore()
   const logger = new Logger()
   const messages: Required<MessagesConfig> = { ...DEFAULT_MESSAGES, ...config.messages }
 
   const maxHistory = config.history?.maxMessages ?? 10
+  const maxHistoryTokens = config.history?.maxTokens
 
   function trimHistory(history: ChatMessage[] | undefined): ChatMessage[] {
     if (!history || history.length === 0) return []
-    if (history.length <= maxHistory) return history
-    return history.slice(-maxHistory)
+    const byCount = history.length <= maxHistory ? history : history.slice(-maxHistory)
+    if (!maxHistoryTokens || maxHistoryTokens <= 0) return byCount
+
+    // Walk backward from most recent and accept messages until token budget is reached.
+    // The most recent message is always kept even if it exceeds the cap on its own.
+    const kept: ChatMessage[] = []
+    let used = 0
+    for (let i = byCount.length - 1; i >= 0; i--) {
+      const cost = Math.ceil(byCount[i].content.length / 4)
+      if (kept.length === 0 || used + cost <= maxHistoryTokens) {
+        kept.unshift(byCount[i])
+        used += cost
+      } else {
+        break
+      }
+    }
+    return kept
   }
 
   let provider: LLMProvider
@@ -66,9 +91,10 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       apiKey: config.llm.apiKey,
       model: config.llm.model ?? '',
       baseUrl: config.llm.baseUrl,
+      timeoutMs: config.llm.timeoutMs,
     })
   } else {
-    provider = new ClaudeProvider(config.llm.apiKey ?? '', config.llm.model)
+    provider = new ClaudeProvider(config.llm.apiKey ?? '', config.llm.model, config.llm.timeoutMs)
   }
 
   let resolver = new IntentResolver(provider, registry)
@@ -145,6 +171,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
 
       if (safetyResult.requiresConfirm) {
         const tool = registry.getTool(toolName)!
+        const confirmToken = randomUUID()
         logger.log({
           timestamp: new Date().toISOString(),
           userId: options?.userId,
@@ -158,13 +185,14 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           responseType: 'confirm',
         })
         const confirmMsg = tool.confirm_message ?? messages.confirmPrompt(tool.name, params)
-        return formatter.formatConfirm(tool, params, confirmMsg)
+        return formatter.formatConfirm(tool, params, confirmMsg, confirmToken)
       }
 
       const executionResult = await executor.execute(toolName, params, options?.authToken)
 
       if (executionResult.status >= 400) {
-        const errorMsg = `API returned status ${executionResult.status}`
+        const internalDetail = `API returned status ${executionResult.status}`
+        const errorCode = executionResult.status >= 500 ? 'UPSTREAM_5XX' : 'UPSTREAM_4XX'
         logger.log({
           timestamp: new Date().toISOString(),
           userId: options?.userId,
@@ -176,9 +204,9 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           llmTokensOut,
           success: false,
           responseType: 'error',
-          error: errorMsg,
+          error: internalDetail,
         })
-        return formatter.formatError(errorMsg, 'API_ERROR')
+        return formatter.formatError(messages.upstreamError, errorCode)
       }
 
       const tool = registry.getTool(toolName)!
@@ -205,7 +233,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
 
       return response
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
+      const internalDetail = err instanceof Error ? err.message : String(err)
       logger.error('processMessage failed', err)
       const catchSafeParams = redactParams(resolvedParams, resolvedTool ? (registry.getTool(resolvedTool)?.sensitive_params ?? []) : [])
       logger.log({
@@ -219,16 +247,16 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
         llmTokensOut,
         success: false,
         responseType: 'error',
-        error: errorMsg,
+        error: internalDetail,
       })
-      return formatter.formatError(errorMsg, 'INTERNAL_ERROR')
+      return formatter.formatError(messages.internalError, 'INTERNAL_ERROR')
     }
   }
 
   async function confirmAndExecute(
     toolName: string,
     params: Record<string, unknown>,
-    options?: { authToken?: string },
+    options?: { authToken?: string; idempotencyKey?: string },
   ): Promise<AIEResponse> {
     const startMs = Date.now()
     const confirmToolDef = registry.getTool(toolName)
@@ -239,10 +267,30 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
         return formatter.formatError(`Tool "${toolName}" not found`, 'TOOL_NOT_FOUND')
       }
 
+      // Idempotency replay — same key within TTL returns the cached response without re-executing.
+      if (options?.idempotencyKey) {
+        const cached = idempotency.get(options.idempotencyKey)
+        if (cached) {
+          logger.log({
+            timestamp: new Date().toISOString(),
+            input: `[confirm:replay] ${toolName}`,
+            resolvedTool: toolName,
+            params: confirmSafeParams,
+            latencyMs: Date.now() - startMs,
+            llmTokensIn: 0,
+            llmTokensOut: 0,
+            success: true,
+            responseType: cached.type,
+          })
+          return cached
+        }
+      }
+
       const executionResult = await executor.execute(toolName, params, options?.authToken)
 
       if (executionResult.status >= 400) {
-        const errorMsg = `API returned status ${executionResult.status}`
+        const internalDetail = `API returned status ${executionResult.status}`
+        const errorCode = executionResult.status >= 500 ? 'UPSTREAM_5XX' : 'UPSTREAM_4XX'
         logger.log({
           timestamp: new Date().toISOString(),
           input: `[confirm] ${toolName}`,
@@ -253,12 +301,20 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           llmTokensOut: 0,
           success: false,
           responseType: 'error',
-          error: errorMsg,
+          error: internalDetail,
         })
-        return formatter.formatError(errorMsg, 'API_ERROR')
+        const errResponse = formatter.formatError(messages.upstreamError, errorCode)
+        if (options?.idempotencyKey) {
+          idempotency.record(options.idempotencyKey, errResponse)
+        }
+        return errResponse
       }
 
       const response = formatter.formatAction(true, messages.actionComplete(toolName))
+
+      if (options?.idempotencyKey) {
+        idempotency.record(options.idempotencyKey, response)
+      }
 
       logger.log({
         timestamp: new Date().toISOString(),
@@ -274,9 +330,8 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
 
       return response
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
       logger.error('confirmAndExecute failed', err)
-      return formatter.formatError(errorMsg, 'INTERNAL_ERROR')
+      return formatter.formatError(messages.internalError, 'INTERNAL_ERROR')
     }
   }
 
@@ -296,11 +351,12 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
         })()
 
         if (req.body?.action === 'confirm') {
-          const { toolName, params } = req.body as {
+          const { toolName, params, idempotencyKey } = req.body as {
             toolName: string
             params: Record<string, unknown>
+            idempotencyKey?: string
           }
-          const result = await confirmAndExecute(toolName, params, { authToken })
+          const result = await confirmAndExecute(toolName, params, { authToken, idempotencyKey })
           res.json(result)
           return
         }

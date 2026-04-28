@@ -6,6 +6,7 @@ export interface OpenAIProviderConfig {
   apiKey?: string
   model: string
   baseUrl?: string
+  timeoutMs?: number
 }
 
 export class OpenAIProvider implements LLMProvider {
@@ -22,6 +23,7 @@ export class OpenAIProvider implements LLMProvider {
     this.client = new OpenAI({
       apiKey: config.apiKey ?? 'no-key-required',
       baseURL: config.baseUrl,
+      timeout: config.timeoutMs ?? 30_000,
     })
   }
 

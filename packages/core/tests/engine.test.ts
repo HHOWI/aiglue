@@ -144,6 +144,66 @@ describe('createAIEngine', () => {
     const result = await engine.processMessage('뭐든')
     expect(result.type).toBe('error')
   })
+
+  it('should not leak raw err.message in INTERNAL_ERROR responses', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    const secret = 'connect ECONNREFUSED 10.0.0.42:5432 db=prod-creds'
+    engine._setProvider({
+      resolve: vi.fn().mockRejectedValue(new Error(secret)),
+    })
+
+    const result = await engine.processMessage('뭐든')
+    expect(result.type).toBe('error')
+    if (result.type === 'error') {
+      expect(result.message).not.toContain(secret)
+      expect(result.message).not.toContain('ECONNREFUSED')
+      expect(result.code).toBe('INTERNAL_ERROR')
+    }
+  })
+
+  it('should not leak upstream status detail in user-facing message', async () => {
+    // Use a server port nothing listens on → executor will fail to connect
+    // Instead, set up a server that returns 500 for the GET /api/users path
+    const errServer: Server = createServer((_req, res) => {
+      res.writeHead(503, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'pg connection pool exhausted' }))
+    })
+    const errPort = await new Promise<number>((r) => {
+      errServer.listen(0, () => {
+        const addr = errServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${errPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 'get_users', params: {} },
+        textContent: null,
+        tokensIn: 10,
+        tokensOut: 5,
+      }),
+    })
+
+    const result = await engine.processMessage('사용자 보여줘')
+    expect(result.type).toBe('error')
+    if (result.type === 'error') {
+      expect(result.message).not.toContain('503')
+      expect(result.message).not.toContain('status')
+      expect(result.message).not.toContain('pg connection')
+      expect(result.code).toBe('UPSTREAM_5XX')
+    }
+
+    await new Promise<void>((r) => errServer.close(() => r()))
+  })
 })
 
 describe('createAIEngine — history passthrough', () => {
@@ -199,6 +259,62 @@ describe('createAIEngine — history passthrough', () => {
     expect(contents).toContain('msg4')
     expect(contents).toContain('msg13')
     expect(contents).toContain('new')
+  })
+
+  it('drops oldest messages first when maxTokens budget is exceeded', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+      history: { maxMessages: 100, maxTokens: 50 },
+    })
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    // 4 messages × 100 chars ≈ 25 tokens each → budget 50 fits ~2 most recent
+    const heavy = (label: string) => ({
+      role: 'user' as const,
+      content: `${label}-` + 'a'.repeat(99),
+    })
+    await engine.processMessage('new', {
+      history: [
+        heavy('old1'),
+        heavy('old2'),
+        heavy('mid1'),
+        heavy('recent1'),
+      ],
+    })
+
+    const passed = mockResolve.mock.calls[0][0] as { content: string }[]
+    const contents = passed.map((m) => m.content)
+    expect(contents.some((c) => c.startsWith('old1'))).toBe(false)
+    expect(contents.some((c) => c.startsWith('old2'))).toBe(false)
+    expect(contents.some((c) => c.startsWith('recent1'))).toBe(true)
+    expect(contents).toContain('new')
+  })
+
+  it('keeps the most recent message even when it alone exceeds maxTokens', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+      history: { maxMessages: 100, maxTokens: 5 },
+    })
+    const mockResolve = vi.fn().mockResolvedValue({
+      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+    })
+    engine._setProvider({ resolve: mockResolve })
+
+    const huge = 'z'.repeat(400) // ~100 tokens, far over the 5-token budget
+    await engine.processMessage('new', {
+      history: [{ role: 'user', content: huge }],
+    })
+
+    const passed = mockResolve.mock.calls[0][0] as { content: string }[]
+    const contents = passed.map((m) => m.content)
+    expect(contents).toContain(huge)
   })
 
   it('honors custom maxMessages from engine config', async () => {
@@ -475,5 +591,114 @@ describe('createAIEngine — config.auth.token', () => {
 
     const data = JSON.parse(chunks.join(''))
     expect(data.type).toBe('error')
+  })
+})
+
+describe('createAIEngine — confirmAndExecute idempotency', () => {
+  it('issues a confirmToken on confirm responses', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 'update_user', params: { id: '1', name: 'X' } },
+        textContent: null,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    })
+
+    const result = await engine.processMessage('수정해줘')
+    expect(result.type).toBe('confirm')
+    if (result.type === 'confirm') {
+      expect(typeof result.confirmToken).toBe('string')
+      expect(result.confirmToken!.length).toBeGreaterThan(8)
+    }
+  })
+
+  it('dedupes concurrent confirmAndExecute calls with the same idempotencyKey', async () => {
+    let callCount = 0
+    const writeServer = createServer((req, res) => {
+      if (req.url?.startsWith('/api/users/') && req.method === 'PUT') {
+        callCount++
+        let body = ''
+        req.on('data', (c) => { body += c })
+        req.on('end', () => {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
+        })
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    const writePort = await new Promise<number>((r) => {
+      writeServer.listen(0, () => {
+        const addr = writeServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${writePort}`,
+    })
+
+    const key = 'test-key-001'
+    const r1 = await engine.confirmAndExecute(
+      'update_user',
+      { id: '1', name: 'X' },
+      { idempotencyKey: key },
+    )
+    const r2 = await engine.confirmAndExecute(
+      'update_user',
+      { id: '1', name: 'X' },
+      { idempotencyKey: key },
+    )
+
+    expect(callCount).toBe(1)
+    expect(r1).toEqual(r2)
+
+    await new Promise<void>((r) => writeServer.close(() => r()))
+  })
+
+  it('does not dedupe when no idempotencyKey is supplied', async () => {
+    let callCount = 0
+    const writeServer = createServer((req, res) => {
+      if (req.url?.startsWith('/api/users/') && req.method === 'PUT') {
+        callCount++
+        let body = ''
+        req.on('data', (c) => { body += c })
+        req.on('end', () => {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ ok: true }))
+        })
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    const writePort = await new Promise<number>((r) => {
+      writeServer.listen(0, () => {
+        const addr = writeServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${writePort}`,
+    })
+
+    await engine.confirmAndExecute('update_user', { id: '1', name: 'X' })
+    await engine.confirmAndExecute('update_user', { id: '1', name: 'X' })
+
+    expect(callCount).toBe(2)
+
+    await new Promise<void>((r) => writeServer.close(() => r()))
   })
 })

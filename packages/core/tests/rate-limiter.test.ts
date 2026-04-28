@@ -70,4 +70,35 @@ describe('RateLimiter', () => {
     expect(limiter.check('user-abc')).toBe(true)
     expect(limiter.check('user-abc')).toBe(false)
   })
+
+  it('sweep() removes all expired entries in a single pass', () => {
+    vi.useFakeTimers()
+    const limiter = new RateLimiter({ global: '2/min', sweepIntervalMs: 0 })
+
+    // Populate with 100 distinct keys that will never be revisited.
+    for (let i = 0; i < 100; i++) limiter.check(`burst-${i}`)
+    expect(limiter.size()).toBe(100)
+
+    vi.advanceTimersByTime(61_000)
+
+    const removed = limiter.sweep()
+    expect(removed).toBe(100)
+    expect(limiter.size()).toBe(0)
+    limiter.dispose()
+  })
+
+  it('background sweep clears expired entries automatically', () => {
+    vi.useFakeTimers()
+    const limiter = new RateLimiter({ global: '2/min', sweepIntervalMs: 5_000 })
+
+    for (let i = 0; i < 50; i++) limiter.check(`bg-${i}`)
+    expect(limiter.size()).toBe(50)
+
+    // Advance past the rate window so all entries become expired,
+    // then past one sweep tick to fire the cleanup.
+    vi.advanceTimersByTime(70_000)
+
+    expect(limiter.size()).toBe(0)
+    limiter.dispose()
+  })
 })

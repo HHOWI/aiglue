@@ -6,15 +6,24 @@ export interface ExecutionResult {
   headers: Record<string, string>
 }
 
+const DEFAULT_MAX_RESPONSE_BYTES = 5 * 1024 * 1024 // 5 MB
+
 export class Executor {
   private registry: ToolRegistry
   private baseUrl: string
   private timeoutMs: number
+  private maxResponseBytes: number
 
-  constructor(registry: ToolRegistry, baseUrl: string, timeoutMs = 10000) {
+  constructor(
+    registry: ToolRegistry,
+    baseUrl: string,
+    timeoutMs = 10000,
+    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+  ) {
     this.registry = registry
     this.baseUrl = baseUrl.replace(/\/$/, '')
     this.timeoutMs = timeoutMs
+    this.maxResponseBytes = maxResponseBytes
   }
 
   async execute(
@@ -36,10 +45,11 @@ export class Executor {
       throw new Error(`Missing required path param(s): ${missingParams.join(', ')}`)
     }
 
-    // Replace path params (e.g., :id)
+    // Replace path params with URL-encoded values to prevent path injection (e.g., "../admin", "a/b")
     let resolvedPath = path
-    for (const [key, value] of Object.entries(params)) {
-      resolvedPath = resolvedPath.replace(`:${key}`, String(value))
+    for (const paramName of pathParamNames) {
+      const value = params[paramName]
+      resolvedPath = resolvedPath.replace(`:${paramName}`, encodeURIComponent(String(value)))
     }
 
     // Build URL with query params for GET
@@ -83,7 +93,7 @@ export class Executor {
         signal: controller.signal,
       })
 
-      const responseData = await response.json().catch(() => null)
+      const responseData = await this.readWithCap(response)
 
       return {
         status: response.status,
@@ -92,6 +102,46 @@ export class Executor {
       }
     } finally {
       clearTimeout(timeout)
+    }
+  }
+
+  private async readWithCap(response: Response): Promise<unknown> {
+    // Fast path: trust Content-Length when present.
+    const cl = response.headers.get('content-length')
+    if (cl) {
+      const len = Number.parseInt(cl, 10)
+      if (Number.isFinite(len) && len > this.maxResponseBytes) {
+        throw new Error(
+          `Response body exceeds maxResponseBytes (${len} > ${this.maxResponseBytes})`,
+        )
+      }
+    }
+
+    if (!response.body) return null
+
+    const reader = response.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > this.maxResponseBytes) {
+        await reader.cancel()
+        throw new Error(
+          `Response body exceeds maxResponseBytes (${total} > ${this.maxResponseBytes})`,
+        )
+      }
+      chunks.push(value)
+    }
+
+    if (chunks.length === 0) return null
+    const text = Buffer.concat(chunks).toString('utf-8')
+    if (!text) return null
+    try {
+      return JSON.parse(text)
+    } catch {
+      return null
     }
   }
 }

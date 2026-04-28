@@ -19,6 +19,7 @@ export type {
   ChatMessage,
   HistoryConfig,
   MessagesConfig,
+  ExecutorConfig,
 } from './types.js'
 
 export { lintFile } from './validate/lint.js'

@@ -8,4 +8,5 @@ export const DEFAULT_MESSAGES: Required<MessagesConfig> = {
   toolNotAvailableError: 'Requested operation is not available.',
   rateLimitedError: 'Too many requests. Please wait and try again.',
   internalError: 'An internal error occurred.',
+  upstreamError: 'The upstream service returned an error.',
 }

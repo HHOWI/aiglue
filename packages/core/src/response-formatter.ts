@@ -89,12 +89,18 @@ export class ResponseFormatter {
     return { type: 'action', status: success ? 'success' : 'failed', message }
   }
 
-  formatConfirm(tool: ToolDefinition, params: Record<string, unknown>, message?: string): AIEResponse {
+  formatConfirm(
+    tool: ToolDefinition,
+    params: Record<string, unknown>,
+    message?: string,
+    confirmToken?: string,
+  ): AIEResponse {
     return {
       type: 'confirm',
       message: message ?? tool.confirm_message ?? `Confirm "${tool.name}"?`,
       toolName: tool.name,
       params,
+      ...(confirmToken ? { confirmToken } : {}),
     }
   }
 

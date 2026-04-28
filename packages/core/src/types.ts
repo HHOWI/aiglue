@@ -93,6 +93,8 @@ export interface AIEConfirmResponse {
   message: string
   toolName: string
   params: Record<string, unknown>
+  /** Server-issued. Echo back via confirmAndExecute to dedupe duplicate confirm submissions. */
+  confirmToken?: string
 }
 
 export interface AIEClarifyResponse {
@@ -142,6 +144,8 @@ export interface MessagesConfig {
   toolNotAvailableError?: string
   rateLimitedError?: string
   internalError?: string
+  /** Shown when the upstream API returns a non-2xx status. Raw upstream details stay in logs only. */
+  upstreamError?: string
 }
 
 export interface AIEngineConfig {
@@ -153,11 +157,22 @@ export interface AIEngineConfig {
   baseUrl?: string
   history?: HistoryConfig
   messages?: MessagesConfig
+  executor?: ExecutorConfig
+}
+
+export interface ExecutorConfig {
+  /** Per-request HTTP timeout in ms. Default 10000. */
+  timeoutMs?: number
+  /** Hard cap on upstream response body size in bytes. Default 5_242_880 (5 MB). */
+  maxResponseBytes?: number
 }
 
 export interface HistoryConfig {
   /** Maximum number of conversation messages to retain. Default 10. Oldest dropped first when exceeded. */
   maxMessages?: number
+  /** Approximate token cap for the history window (~4 chars/token estimate). Older messages dropped first when exceeded.
+   *  The most recent message is always kept even if it alone exceeds the cap. */
+  maxTokens?: number
 }
 
 export interface LLMConfig {
@@ -166,6 +181,8 @@ export interface LLMConfig {
   model?: string
   baseUrl?: string
   keyMode?: 'server' | 'user' | 'both'
+  /** Per-request timeout in ms for LLM calls (resolve + chat). Default 30000. */
+  timeoutMs?: number
 }
 
 export interface AuthConfig {
