@@ -10,6 +10,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Force IPv4 DNS resolution. On Linux runners the default order returns IPv6 first
+# and Node's fetch hits a happy-eyeballs delay (~3–4s per call) when the test mock
+# server is bound to IPv4 only — pushing the slower tests over Vitest's 5s timeout.
+env:
+  NODE_OPTIONS: '--dns-result-order=ipv4first'
+
 jobs:
   test:
     name: build + test (Node ${{ matrix.node }})

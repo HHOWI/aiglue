@@ -6,6 +6,11 @@ on:
   push:
     tags: ['v*']
 
+# Same DNS workaround as ci.yml — forces IPv4 first so tests that fetch a localhost mock server
+# don't burn ~4s per request on Linux's IPv6-first happy-eyeballs path.
+env:
+  NODE_OPTIONS: '--dns-result-order=ipv4first'
+
 jobs:
   publish:
     name: build + verify + npm publish
