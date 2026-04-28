@@ -10,6 +10,7 @@ aiglue는 `tools.yaml` 하나로 기존 REST API를 자연어 인터페이스로
 
 - `packages/core/` — `@aiglue/core`, 서버 사이드 핵심 패키지. 엔진·실행기·프로바이더·검증기·CLI·MCP 서버가 모두 여기에 있다. 주요 하위 경로: `src/{cli,validate,providers,routing,mcp}/`, `schema/` (공식 JSON Schema), `assets/` (Claude skill·Cursor rule·tools.yaml 스켈레톤 — `aiglue init`이 배포).
 - `packages/client/` — `@aiglue/client`, headless React hook 패키지. `useAIGlue({ endpoint })`가 send / sendConfirm / result / history / loading / error / reset를 반환. confirm 토큰 자동 echo, 멀티턴 history 누적, 전송 에러와 엔진 에러 분리. React 18·19 peer. Vitest + happy-dom.
+- `packages/client-vue/` — `@aiglue/client-vue`, 같은 API surface의 Vue 3 composable. Vue ref 반환. peer dep `vue ^3`. 독립 semver.
 - `examples/minimal/` — JSONPlaceholder로 동작하는 최소 Express 예제. 새 기능은 가능하면 여기서 end-to-end로도 확인한다.
 - `docs/superpowers/` — 스펙(`specs/`)과 구현 계획(`plans/`) 아카이브.
 - `tsconfig.base.json` — 루트 공통 TS 설정 (`strict`, `moduleResolution: bundler`, ESM). 각 패키지는 이것을 extends.
@@ -133,7 +134,10 @@ processMessage(userText, { authToken, userId, history })
   - README 프레임워크 예시 카탈로그 (Express / FastAPI / Spring)
   - **운영 강화 (2026-04-28)**: path injection 방어(`encodeURIComponent`), LLM/HTTP 타임아웃(`LLMConfig.timeoutMs` 30s, `ExecutorConfig.timeoutMs` 10s), 에러 메시지 sanitize(원본 logger에만), confirm 멱등성(`IdempotencyStore` + `confirmToken`), 응답 크기 cap(`maxResponseBytes` 5MB stream-read), RateLimiter 백그라운드 sweep, history 토큰 예산 윈도잉, Anthropic prompt caching(자동 적용), tools.yaml hot reload(`engine.reload()` + 폴링). `engine.dispose()`로 백그라운드 타이머 정리.
 - 추가 구현됨 (2026-04-28 후반):
-  - `@aiglue/core` MCP server: `aiglue mcp serve --tools <path> --base-url <url>` + programmatic `createMCPServer()`. stdio transport, `AIGLUE_AUTH_TOKEN` env passthrough, risk_level description 프리픽스로 호스트 confirm UI 트리거. SSE/Streamable HTTP는 미구현.
-  - `@aiglue/client`: headless React hook (`useAIGlue`), confirm 토큰 자동 echo + 멀티턴 history 자동 누적. Vue/Svelte 어댑터는 미구현.
-  - Tool-index 2-stage routing: explicit opt-in (`routing.strategy: 'two-stage'`)으로 stage-1 LLM이 인덱스에서 후보 선택 후 stage-2가 전체 정의로 resolve. fallback은 단순 single-stage. auto threshold 모드는 미구현.
-- 미구현(의도적 공백): Vue/Svelte 클라이언트 어댑터, `@aiglue/mcp` 별도 패키지(현재 `@aiglue/core`에 통합), `npx aiglue generate-mcp`(README 예시로 대체), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로, MCP SSE/Streamable HTTP transport, 토큰 streaming 응답. 설계 스펙: `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 등. 방향성: `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md`.
+  - `@aiglue/core` MCP server: `aiglue mcp serve --tools <path> --base-url <url> [--transport stdio|http --port <n>]` + programmatic `createMCPServer()`. stdio + StreamableHTTP 양쪽 지원. HTTP 모드는 stateless로 매 요청마다 server+transport를 만들어 클라이언트의 `Authorization: Bearer ...` 헤더를 그대로 upstream `authToken`으로 패스스루(멀티 테넌트 친화). `AIGLUE_AUTH_TOKEN` env는 이제 fallback 역할. risk_level description 프리픽스로 호스트 confirm UI 트리거.
+  - `aiglue generate-mcp --tools <path> --base-url <url> --output <dir>`: tools.yaml 복사 + `claude_desktop_config.snippet.json` (절대경로 baked) + 설치 README를 한 폴더로 출력. "받아서 README 따라 1번 따라하면 끝" 패키지로 사내 배포·교육용.
+  - `@aiglue/client`: headless React hook (`useAIGlue`), confirm 토큰 자동 echo + 멀티턴 history 자동 누적.
+  - `@aiglue/client-vue`: 같은 API surface의 Vue 3 composable. happy-dom 테스트.
+  - `AIEClarifyResponse` 생성 경로: IntentResolver가 `__aiglue_clarify__` reserved 메타 tool을 자동 주입, LLM이 모호 시 호출하면 engine이 SafetyGate/Executor 직전에 intercept해 `{type:'clarify', question, options?}` 반환. 호스트는 options를 버튼으로 렌더 가능.
+  - Tool-index 2-stage routing: `routing.strategy: 'auto' | 'single' | 'two-stage'` + `twoStageThreshold` (default 30). auto가 새 default — tool 30+개에서 자동 발동.
+- 미구현(의도적 공백): Svelte 클라이언트 어댑터, `@aiglue/mcp` 별도 패키지(현재 `@aiglue/core`에 통합), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, MCP SSE 전용 transport(현재 StreamableHTTP만), 토큰 streaming 응답. 설계 스펙: `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 등. 방향성: `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md`.

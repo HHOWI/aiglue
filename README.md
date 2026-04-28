@@ -598,10 +598,12 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — expose tools.yaml as an MCP server over stdio (Claude Desktop, Cursor, Cline, …)
 - [x] `@aiglue/client` — headless React hook for `/ai/chat` (auto confirm-token echo, multi-turn history)
+- [x] `@aiglue/client-vue` — Vue 3 composable mirror of `@aiglue/client`
 - [x] `npx aiglue init --swagger <path-or-url>` — generate `tools.yaml` from an OpenAPI 3.x spec
-- [ ] Vue / Svelte adapters
-- [ ] SSE / Streamable HTTP transport for the MCP server
-- [ ] `npx aiglue generate-mcp` — emit a standalone MCP server config bundle for distribution
+- [x] `npx aiglue generate-mcp` — emit a self-contained MCP install bundle for distribution
+- [x] `aiglue mcp serve --transport http` — StreamableHTTP transport for centrally hosted MCP servers
+- [x] `AIEClarifyResponse` — engine-emitted clarify questions (with optional answer buttons)
+- [ ] Svelte adapter
 - [ ] `npx aiglue init --swagger` (generate tools.yaml from OpenAPI spec)
 
 ## License

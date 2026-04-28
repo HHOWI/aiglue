@@ -596,10 +596,12 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] 운영 강화 (LLM·HTTP 타임아웃, 응답 크기 cap, history 토큰 예산, confirm 멱등성, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — `tools.yaml`을 stdio 기반 MCP 서버로 노출 (Claude Desktop · Cursor · Cline …)
 - [x] `@aiglue/client` — `/ai/chat` 용 headless React hook (confirm 토큰 자동 echo, 멀티턴 히스토리)
+- [x] `@aiglue/client-vue` — Vue 3 composable로 `@aiglue/client` 미러링
 - [x] `npx aiglue init --swagger <path-or-url>` — OpenAPI 3.x 스펙에서 `tools.yaml` 자동 생성
-- [ ] Vue / Svelte 어댑터
-- [ ] MCP SSE / Streamable HTTP transport
-- [ ] `npx aiglue generate-mcp` — 배포용 독립 MCP 서버 config 번들 생성
+- [x] `npx aiglue generate-mcp` — 배포용 self-contained MCP 설치 번들 출력
+- [x] `aiglue mcp serve --transport http` — 중앙 호스팅 MCP 서버용 StreamableHTTP transport
+- [x] `AIEClarifyResponse` — 엔진이 모호 시 후속 질문 발행 (옵션 버튼 지원)
+- [ ] Svelte 어댑터
 - [ ] `npx aiglue init --swagger` (OpenAPI 스펙에서 tools.yaml 생성)
 
 ## 라이선스
