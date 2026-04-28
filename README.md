@@ -159,6 +159,25 @@ const { send, sendConfirm, result, loading } = useAIGlue({ endpoint: '/ai/chat' 
 // sendConfirm() echoes the confirmToken from the last confirm response automatically.
 ```
 
+#### Server framework adapters
+
+The same engine drives Express / Fastify / Hono out of the box, and `engine.dispatch()` exposes the framework-agnostic core for anything else (Koa, Cloudflare Workers, AWS Lambda, …):
+
+```ts
+// Express (existing)
+app.post('/ai/chat', engine.handler())
+
+// Fastify
+fastify.post('/ai/chat', engine.fastifyHandler())
+
+// Hono (Cloudflare Workers / Bun / Edge)
+app.post('/ai/chat', engine.honoHandler())
+
+// Custom runtime — call dispatch() with the parsed body + headers
+const result = await engine.dispatch({ body, headers })
+return new Response(JSON.stringify(result))
+```
+
 ## How It Works
 
 ```
@@ -218,7 +237,7 @@ const engine = createAIEngine({
 
 ### Multi-LLM Support
 
-aiglue ships two built-in providers. `openai-compatible` works with any endpoint that implements the OpenAI Chat Completions API with function calling: OpenAI, Groq, Together AI, Mistral, DeepSeek, Alibaba DashScope (Qwen), OpenRouter, LiteLLM proxy, and local runners (Ollama, LM Studio, llama.cpp server, vLLM, LocalAI).
+aiglue ships two built-in providers. `openai-compatible` works with any endpoint that implements the OpenAI Chat Completions API with function calling: OpenAI, Groq, Together AI, Mistral, DeepSeek, Alibaba DashScope (Qwen), OpenRouter, LiteLLM proxy, and local runners (Ollama, LM Studio, llama.cpp server, vLLM, LocalAI). For anything outside that — AWS Bedrock, an internal LLM gateway, multi-provider routing — implement the `LLMProvider` interface and pass it as `provider: 'custom'`.
 
 ```ts
 // Claude (Anthropic)
@@ -245,9 +264,25 @@ llm: {
   model: 'llama-3.3-70b-versatile',
   baseUrl: 'https://api.groq.com/openai/v1',
 }
+
+// Custom — bring your own LLMProvider (AWS Bedrock, internal gateway, multi-provider routing, …)
+import type { LLMProvider } from '@aiglue/core'
+
+class BedrockProvider implements LLMProvider {
+  async resolve(messages, tools) { /* AWS Bedrock SDK call */ }
+  async chat(messages, opts) { /* … */ }
+}
+
+llm: {
+  provider: 'custom',
+  instance: new BedrockProvider(),
+}
+
+// Zero-config — omit llm entirely; defaults to Claude with ANTHROPIC_API_KEY from env
+// (no llm field needed at all)
 ```
 
-Function calling quality depends on the model — prefer instruction-tuned models ≥7B for reliable tool use. `model` is required for `openai-compatible`; `apiKey` is optional (local runners don't need one).
+Function calling quality depends on the model — prefer instruction-tuned models ≥7B for reliable tool use. `model` is required for `openai-compatible`; `apiKey` is optional (local runners don't need one). For `'custom'` the engine just routes every `resolve` / `chat` call to your `instance`.
 
 ### Messages (i18n)
 
@@ -603,6 +638,9 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] `npx aiglue generate-mcp` — emit a self-contained MCP install bundle for distribution
 - [x] `aiglue mcp serve --transport http` — StreamableHTTP transport for centrally hosted MCP servers
 - [x] `AIEClarifyResponse` — engine-emitted clarify questions (with optional answer buttons)
+- [x] Custom `LLMProvider` — bring your own (Bedrock, internal gateway, multi-provider routing, …)
+- [x] Server framework adapters — Express / Fastify / Hono out of the box, `engine.dispatch()` for the rest
+- [x] Zero-config defaults — `createAIEngine({ tools: './tools.yaml' })` works with `ANTHROPIC_API_KEY` env
 - [ ] Svelte adapter
 - [ ] `npx aiglue init --swagger` (generate tools.yaml from OpenAPI spec)
 

@@ -134,6 +134,9 @@ processMessage(userText, { authToken, userId, history })
   - README 프레임워크 예시 카탈로그 (Express / FastAPI / Spring)
   - **운영 강화 (2026-04-28)**: path injection 방어(`encodeURIComponent`), LLM/HTTP 타임아웃(`LLMConfig.timeoutMs` 30s, `ExecutorConfig.timeoutMs` 10s), 에러 메시지 sanitize(원본 logger에만), confirm 멱등성(`IdempotencyStore` + `confirmToken`), 응답 크기 cap(`maxResponseBytes` 5MB stream-read), RateLimiter 백그라운드 sweep, history 토큰 예산 윈도잉, Anthropic prompt caching(자동 적용), tools.yaml hot reload(`engine.reload()` + 폴링). `engine.dispose()`로 백그라운드 타이머 정리.
 - 추가 구현됨 (2026-04-28 후반):
+  - **Custom LLM provider**: `LLMConfig.provider: 'custom' + instance: LLMProvider`. `LLMProvider`/`ChatOptions`/`ChatResponse` 타입을 public export. AWS Bedrock·사내 LLM 게이트웨이·multi-provider routing·결정적 mocking 모두 사용자 코드로 가능.
+  - **Zero-config**: `LLMConfig` 자체가 optional. 생략 시 `{ provider: 'claude' }` 기본 + Anthropic SDK가 `ANTHROPIC_API_KEY` env 자동 인식 → 최소 설정 `{ tools: './tools.yaml' }`.
+  - **Framework adapters**: `engine.handler()` (Express, 기존) + `engine.fastifyHandler()` + `engine.honoHandler()`. 모두 같은 framework-agnostic 코어 `engine.dispatch({ body, headers, rawRequest? })`를 통과 — 새 런타임은 그 코어를 직접 호출하면 됨 (Koa·CF Workers·Lambda 등).
   - `@aiglue/core` MCP server: `aiglue mcp serve --tools <path> --base-url <url> [--transport stdio|http --port <n>]` + programmatic `createMCPServer()`. stdio + StreamableHTTP 양쪽 지원. HTTP 모드는 stateless로 매 요청마다 server+transport를 만들어 클라이언트의 `Authorization: Bearer ...` 헤더를 그대로 upstream `authToken`으로 패스스루(멀티 테넌트 친화). `AIGLUE_AUTH_TOKEN` env는 이제 fallback 역할. risk_level description 프리픽스로 호스트 confirm UI 트리거.
   - `aiglue generate-mcp --tools <path> --base-url <url> --output <dir>`: tools.yaml 복사 + `claude_desktop_config.snippet.json` (절대경로 baked) + 설치 README를 한 폴더로 출력. "받아서 README 따라 1번 따라하면 끝" 패키지로 사내 배포·교육용.
   - `@aiglue/client`: headless React hook (`useAIGlue`), confirm 토큰 자동 echo + 멀티턴 history 자동 누적.

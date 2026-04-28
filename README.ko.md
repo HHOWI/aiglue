@@ -157,6 +157,25 @@ const { send, sendConfirm, result, loading } = useAIGlue({ endpoint: '/ai/chat' 
 // sendConfirm()은 직전 confirm 응답의 confirmToken을 자동으로 echo합니다.
 ```
 
+#### 서버 프레임워크 어댑터
+
+같은 엔진이 Express / Fastify / Hono 모두 지원합니다. `engine.dispatch()`는 프레임워크 비종속 코어라 그 외(Koa·Cloudflare Workers·AWS Lambda 등)도 직접 wiring 가능:
+
+```ts
+// Express (기존)
+app.post('/ai/chat', engine.handler())
+
+// Fastify
+fastify.post('/ai/chat', engine.fastifyHandler())
+
+// Hono (Cloudflare Workers / Bun / Edge)
+app.post('/ai/chat', engine.honoHandler())
+
+// 커스텀 런타임 — body + headers만 넘기면 됨
+const result = await engine.dispatch({ body, headers })
+return new Response(JSON.stringify(result))
+```
+
 ## 작동 원리
 
 ```
@@ -601,6 +620,9 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] `npx aiglue generate-mcp` — 배포용 self-contained MCP 설치 번들 출력
 - [x] `aiglue mcp serve --transport http` — 중앙 호스팅 MCP 서버용 StreamableHTTP transport
 - [x] `AIEClarifyResponse` — 엔진이 모호 시 후속 질문 발행 (옵션 버튼 지원)
+- [x] Custom `LLMProvider` — Bedrock·사내 게이트웨이·멀티 프로바이더 라우팅 등 자체 구현 가능
+- [x] 서버 프레임워크 어댑터 — Express / Fastify / Hono 내장, `engine.dispatch()`로 나머지 wiring
+- [x] Zero-config 기본값 — `createAIEngine({ tools: './tools.yaml' })` + `ANTHROPIC_API_KEY` env로 동작
 - [ ] Svelte 어댑터
 - [ ] `npx aiglue init --swagger` (OpenAPI 스펙에서 tools.yaml 생성)
 
