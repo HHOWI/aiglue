@@ -20,6 +20,7 @@ export type {
   HistoryConfig,
   MessagesConfig,
   ExecutorConfig,
+  HotReloadConfig,
 } from './types.js'
 
 export { lintFile } from './validate/lint.js'

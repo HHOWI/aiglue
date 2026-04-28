@@ -158,6 +158,14 @@ export interface AIEngineConfig {
   history?: HistoryConfig
   messages?: MessagesConfig
   executor?: ExecutorConfig
+  hotReload?: HotReloadConfig
+}
+
+export interface HotReloadConfig {
+  /** Poll interval in ms for tools.yaml mtime changes. Default 0 (disabled).
+   *  Set e.g. 5000 to auto-reload every 5s when the file mtime changes.
+   *  engine.reload() works regardless of this setting. */
+  pollIntervalMs?: number
 }
 
 export interface ExecutorConfig {

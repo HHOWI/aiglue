@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { statSync } from 'fs'
 import { ToolRegistry } from './tool-registry.js'
 import { ClaudeProvider } from './providers/claude.js'
 import { OpenAIProvider } from './providers/openai.js'
@@ -42,6 +43,10 @@ export interface AIEngine {
     options?: { authToken?: string; idempotencyKey?: string },
   ): Promise<AIEResponse>
   handler(): (req: HandlerRequest, res: HandlerResponse) => Promise<void>
+  /** Reload tools.yaml from disk. Atomic — failure leaves the existing registry intact. */
+  reload(): Promise<{ ok: true } | { ok: false; error: string }>
+  /** Stop background timers (rate-limiter sweep, hot-reload poller). Call on shutdown. */
+  dispose(): void
   /** @internal testing only */
   _setProvider(provider: LLMProvider): void
 }
@@ -382,10 +387,68 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     rebuildResolver()
   }
 
+  // Hot reload — polling (B) + explicit engine.reload() (C). The two share the same atomic
+  // registry.loadFromFile() path, so both fail safely (existing tools stay live on parse errors).
+  let pendingReload: Promise<void> = Promise.resolve()
+  let lastMtimeMs: number | null = (() => {
+    try {
+      return statSync(config.tools).mtimeMs
+    } catch {
+      return null
+    }
+  })()
+
+  async function reload(): Promise<{ ok: true } | { ok: false; error: string }> {
+    let outcome: { ok: true } | { ok: false; error: string } = { ok: true }
+    pendingReload = pendingReload.then(() => {
+      try {
+        registry.loadFromFile(config.tools)
+        try {
+          lastMtimeMs = statSync(config.tools).mtimeMs
+        } catch {
+          // mtime read failure is non-fatal — reload itself succeeded
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error('tools reload failed', err)
+        outcome = { ok: false, error: msg }
+      }
+    })
+    await pendingReload
+    return outcome
+  }
+
+  const pollIntervalMs = config.hotReload?.pollIntervalMs ?? 0
+  let reloadPoller: ReturnType<typeof setInterval> | null = null
+  if (pollIntervalMs > 0) {
+    reloadPoller = setInterval(() => {
+      try {
+        const mtime = statSync(config.tools).mtimeMs
+        if (lastMtimeMs !== null && mtime !== lastMtimeMs) {
+          void reload()
+        }
+        lastMtimeMs = mtime
+      } catch (err) {
+        logger.error('tools reload poll failed', err)
+      }
+    }, pollIntervalMs)
+    reloadPoller.unref?.()
+  }
+
+  function dispose(): void {
+    rateLimiter.dispose()
+    if (reloadPoller) {
+      clearInterval(reloadPoller)
+      reloadPoller = null
+    }
+  }
+
   return {
     processMessage,
     confirmAndExecute,
     handler,
+    reload,
+    dispose,
     _setProvider,
   }
 }

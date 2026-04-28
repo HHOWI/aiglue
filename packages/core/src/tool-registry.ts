@@ -8,25 +8,40 @@ export class ToolRegistry {
 
   private constructor(config: ToolsConfig) {
     this.tools = new Map()
-    for (const tool of config.tools) {
-      if (this.tools.has(tool.name)) {
-        throw new Error(`Duplicate tool name "${tool.name}" in tools.yaml. Tool names must be unique.`)
-      }
-      this.tools.set(tool.name, tool)
-    }
+    this.applyConfig(config)
   }
 
   static fromFile(filePath: string): ToolRegistry {
+    const reg = new ToolRegistry({ tools_yaml_version: '1.0', tools: [] })
+    reg.loadFromFile(filePath)
+    return reg
+  }
+
+  static fromConfig(config: ToolsConfig): ToolRegistry {
+    return new ToolRegistry(config)
+  }
+
+  /** Atomic swap of the internal tool map. Throws on parse / validation errors without mutating state. */
+  loadFromFile(filePath: string): void {
     const content = readFileSync(filePath, 'utf-8')
     const config = parse(content) as ToolsConfig
     if (!config.tools || !Array.isArray(config.tools)) {
       throw new Error('Invalid tools.yaml: missing "tools" array')
     }
-    return new ToolRegistry(config)
+    this.applyConfig(config)
   }
 
-  static fromConfig(config: ToolsConfig): ToolRegistry {
-    return new ToolRegistry(config)
+  private applyConfig(config: ToolsConfig): void {
+    // Build the new map in full first, then swap — failures (e.g., duplicate names) leave existing state intact.
+    const next = new Map<string, ToolDefinition>()
+    for (const tool of config.tools) {
+      if (next.has(tool.name)) {
+        throw new Error(`Duplicate tool name "${tool.name}" in tools.yaml. Tool names must be unique.`)
+      }
+      next.set(tool.name, tool)
+    }
+    this.tools = next
+    this.llmToolsCache = null
   }
 
   getTool(name: string): ToolDefinition | undefined {

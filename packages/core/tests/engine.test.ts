@@ -594,6 +594,162 @@ describe('createAIEngine — config.auth.token', () => {
   })
 })
 
+describe('createAIEngine — hot reload', () => {
+  it('engine.reload() picks up new tools without restart', async () => {
+    const { writeFileSync, mkdtempSync, rmSync } = await import('fs')
+    const { tmpdir } = await import('os')
+    const dir = mkdtempSync(resolve(tmpdir(), 'aiglue-eng-reload-'))
+    const path = resolve(dir, 'tools.yaml')
+    writeFileSync(path, `tools_yaml_version: "1.0"
+tools:
+  - name: get_users
+    description: list users
+    endpoint: GET /api/users
+    response_type: text
+    risk_level: read
+`)
+
+    const engine = createAIEngine({
+      tools: path,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+
+    // Before reload: only get_users known. Try to call a yet-unregistered tool.
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 'get_orders', params: {} },
+        textContent: null,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    })
+    const before = await engine.processMessage('orders')
+    expect(before.type).toBe('error') // tool not in registry → safety reject
+
+    // Add get_orders to the file and reload.
+    writeFileSync(path, `tools_yaml_version: "1.0"
+tools:
+  - name: get_users
+    description: list users
+    endpoint: GET /api/users
+    response_type: text
+    risk_level: read
+  - name: get_orders
+    description: list orders
+    endpoint: GET /api/users
+    response_type: text
+    risk_level: read
+`)
+    const result = await engine.reload()
+    expect(result.ok).toBe(true)
+
+    const after = await engine.processMessage('orders')
+    expect(after.type).not.toBe('error')
+
+    engine.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('engine.reload() returns { ok: false } and keeps existing tools on parse failure', async () => {
+    const { writeFileSync, mkdtempSync, rmSync } = await import('fs')
+    const { tmpdir } = await import('os')
+    const dir = mkdtempSync(resolve(tmpdir(), 'aiglue-eng-reload-bad-'))
+    const path = resolve(dir, 'tools.yaml')
+    writeFileSync(path, `tools_yaml_version: "1.0"
+tools:
+  - name: get_users
+    description: list users
+    endpoint: GET /api/users
+    response_type: text
+    risk_level: read
+`)
+    const engine = createAIEngine({
+      tools: path,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+
+    // Corrupt the file
+    writeFileSync(path, `tools_yaml_version: "1.0"
+tools: not-an-array
+`)
+    const result = await engine.reload()
+    expect(result.ok).toBe(false)
+
+    // Existing tool still works
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 'get_users', params: {} },
+        textContent: null,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    })
+    const r = await engine.processMessage('users')
+    expect(r.type).not.toBe('error')
+
+    engine.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('polling auto-detects mtime changes and reloads', async () => {
+    const { writeFileSync, mkdtempSync, rmSync, utimesSync } = await import('fs')
+    const { tmpdir } = await import('os')
+    const dir = mkdtempSync(resolve(tmpdir(), 'aiglue-eng-poll-'))
+    const path = resolve(dir, 'tools.yaml')
+    writeFileSync(path, `tools_yaml_version: "1.0"
+tools:
+  - name: t1
+    description: one
+    endpoint: GET /api/users
+    response_type: text
+    risk_level: read
+`)
+
+    const engine = createAIEngine({
+      tools: path,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+      hotReload: { pollIntervalMs: 50 },
+    })
+
+    // Rewrite + bump mtime explicitly (Windows mtime granularity can be coarse).
+    writeFileSync(path, `tools_yaml_version: "1.0"
+tools:
+  - name: t1
+    description: one
+    endpoint: GET /api/users
+    response_type: text
+    risk_level: read
+  - name: t2
+    description: two
+    endpoint: GET /api/users
+    response_type: text
+    risk_level: read
+`)
+    const future = new Date(Date.now() + 5000)
+    utimesSync(path, future, future)
+
+    // Wait for at least one poll tick + reload to flush
+    await new Promise((r) => setTimeout(r, 250))
+
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCall: { toolName: 't2', params: {} },
+        textContent: null,
+        tokensIn: 0,
+        tokensOut: 0,
+      }),
+    })
+    const r = await engine.processMessage('use t2')
+    expect(r.type).not.toBe('error')
+
+    engine.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
+
 describe('createAIEngine — confirmAndExecute idempotency', () => {
   it('issues a confirmToken on confirm responses', async () => {
     const engine = createAIEngine({
