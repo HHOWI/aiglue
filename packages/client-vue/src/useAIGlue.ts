@@ -1,5 +1,5 @@
 import { ref, shallowRef, type Ref, type ShallowRef } from 'vue'
-import type { AIEResponse, ChatMessage } from '@aiglue/core'
+import type { AIEResponse, ChatMessage } from '@hhowi/aiglue-core'
 
 export interface UseAIGlueOptions {
   /** Endpoint that hosts engine.handler() — typically POST /ai/chat. */

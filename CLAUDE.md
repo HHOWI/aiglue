@@ -8,9 +8,9 @@ aiglue는 `tools.yaml` 하나로 기존 REST API를 자연어 인터페이스로
 
 ## Repository layout (pnpm workspace)
 
-- `packages/core/` — `@aiglue/core`, 서버 사이드 핵심 패키지. 엔진·실행기·프로바이더·검증기·CLI·MCP 서버가 모두 여기에 있다. 주요 하위 경로: `src/{cli,validate,providers,routing,mcp}/`, `schema/` (공식 JSON Schema), `assets/` (Claude skill·Cursor rule·tools.yaml 스켈레톤 — `aiglue init`이 배포).
-- `packages/client/` — `@aiglue/client`, headless React hook 패키지. `useAIGlue({ endpoint })`가 send / sendConfirm / result / history / loading / error / reset를 반환. confirm 토큰 자동 echo, 멀티턴 history 누적, 전송 에러와 엔진 에러 분리. React 18·19 peer. Vitest + happy-dom.
-- `packages/client-vue/` — `@aiglue/client-vue`, 같은 API surface의 Vue 3 composable. Vue ref 반환. peer dep `vue ^3`. 독립 semver.
+- `packages/core/` — `@hhowi/aiglue-core`, 서버 사이드 핵심 패키지. 엔진·실행기·프로바이더·검증기·CLI·MCP 서버가 모두 여기에 있다. 주요 하위 경로: `src/{cli,validate,providers,routing,mcp}/`, `schema/` (공식 JSON Schema), `assets/` (Claude skill·Cursor rule·tools.yaml 스켈레톤 — `aiglue init`이 배포).
+- `packages/client/` — `@hhowi/aiglue-client`, headless React hook 패키지. `useAIGlue({ endpoint })`가 send / sendConfirm / result / history / loading / error / reset를 반환. confirm 토큰 자동 echo, 멀티턴 history 누적, 전송 에러와 엔진 에러 분리. React 18·19 peer. Vitest + happy-dom.
+- `packages/client-vue/` — `@hhowi/aiglue-client-vue`, 같은 API surface의 Vue 3 composable. Vue ref 반환. peer dep `vue ^3`. 독립 semver.
 - `examples/minimal/` — JSONPlaceholder로 동작하는 최소 Express 예제. 새 기능은 가능하면 여기서 end-to-end로도 확인한다.
 - `docs/superpowers/` — 스펙(`specs/`)과 구현 계획(`plans/`) 아카이브.
 - `tsconfig.base.json` — 루트 공통 TS 설정 (`strict`, `moduleResolution: bundler`, ESM). 각 패키지는 이것을 extends.
@@ -19,8 +19,8 @@ aiglue는 `tools.yaml` 하나로 기존 REST API를 자연어 인터페이스로
 ## Release / CI
 
 - `.github/workflows/ci.yml` — PR/push 시 Node 18·20·22 (Ubuntu) + macOS·Windows smoke 매트릭스로 build + test 실행. README에 패스 배지 노출.
-- `.github/workflows/release.yml` — `v*` tag push 시 build + test + publint 통과 후 `@aiglue/core`·`@aiglue/client`·`@aiglue/client-vue` 순서로 npm publish. npm provenance 활성화. GitHub Release 자동 생성.
-- 사전 setup (1회): `RELEASING.md` 참고 — `@aiglue` npm org 생성 + `NPM_TOKEN` GitHub secret 등록.
+- `.github/workflows/release.yml` — `v*` tag push 시 build + test + publint 통과 후 `@hhowi/aiglue-core`·`@hhowi/aiglue-client`·`@hhowi/aiglue-client-vue` 순서로 npm publish. npm provenance 활성화. GitHub Release 자동 생성.
+- 사전 setup (1회): `RELEASING.md` 참고 — `npm login` + `NPM_TOKEN` GitHub secret 등록. `@hhowi/*`는 personal scope이라 별도 org 생성 불필요.
 - 릴리즈 절차: 각 패키지 version bump → `CHANGELOG`의 `[Unreleased]` → 버전 섹션 이동 → commit → `git tag v<version>` push.
 
 ## Commands
@@ -38,14 +38,14 @@ pnpm test                         # pnpm -r test — core의 vitest run
 패키지 단위 작업:
 
 ```bash
-pnpm --filter @aiglue/core build
-pnpm --filter @aiglue/core test
-pnpm --filter @aiglue/core test:watch
-pnpm --filter @aiglue/core exec vitest run tests/engine.test.ts   # 특정 파일만
-pnpm --filter @aiglue/core exec vitest run -t "should return confirm"  # 특정 테스트명만
+pnpm --filter @hhowi/aiglue-core build
+pnpm --filter @hhowi/aiglue-core test
+pnpm --filter @hhowi/aiglue-core test:watch
+pnpm --filter @hhowi/aiglue-core exec vitest run tests/engine.test.ts   # 특정 파일만
+pnpm --filter @hhowi/aiglue-core exec vitest run -t "should return confirm"  # 특정 테스트명만
 
-pnpm --filter @aiglue/client build
-pnpm --filter @aiglue/client test    # vitest + happy-dom + React Testing Library
+pnpm --filter @hhowi/aiglue-client build
+pnpm --filter @hhowi/aiglue-client test    # vitest + happy-dom + React Testing Library
 ```
 
 예제 실행:
@@ -57,7 +57,7 @@ ANTHROPIC_API_KEY=... pnpm --filter aiglue-example-minimal start
 CLI (빌드 후 `dist/cli/index.js`, 배포 시 `npx aiglue`):
 
 ```bash
-pnpm --filter @aiglue/core build
+pnpm --filter @hhowi/aiglue-core build
 node packages/core/dist/cli/index.js --help
 node packages/core/dist/cli/index.js lint <tools.yaml>      # schema + 5 semantic rules
 node packages/core/dist/cli/index.js lint --json <file>
@@ -110,7 +110,7 @@ processMessage(userText, { authToken, userId, history })
 - **`ResponseFormatter`** — `response_type=table`이면 `response_mapping.data_path` (점 표기 경로)로 배열 추출, 없으면 응답이 배열이라고 가정. `confirm`/`action`/`error` 빌더도 여기서 관리. `formatConfirm`은 `confirmToken`(서버 발급 UUID) optional 인자 수용.
 - **`IdempotencyStore`** (`idempotency.ts`) — `Map<key, { response, expiresAt }>`. confirm 응답을 5분 TTL로 캐시. 캐시 대상은 **성공 + deterministic 4xx만**, 일시적 5xx는 캐시 제외(업스트림 복구 후 재시도 가능). `confirmAndExecute(_, _, { idempotencyKey })`에서 hit 시 cached response 반환, miss면 실행 후 record. lazy expiry (get에서만 검사).
 - **`RateLimiter`** (`rate-limiter.ts`) — `Map<key, RateLimitEntry>` + lazy eviction + 백그라운드 sweep(`setInterval`, `.unref`, default 60s, `sweepIntervalMs: 0`로 비활성). `dispose()`로 정리.
-- **`validate/`** (`lint.ts`·`rules.ts`·`types.ts`) — `lintFile(path)`는 IO → YAML parse → ajv schema 검증 → semantic rules 순으로 단락 실행하고 `{ ok, errors: LintError[] }` 반환. 스키마 실패 시 semantic은 건너뜀. 규칙 함수는 순수 (단일 `ToolDefinition` 또는 전체 `tools[]` 입력). `@aiglue/core`는 `lintFile`과 관련 타입을 public export.
+- **`validate/`** (`lint.ts`·`rules.ts`·`types.ts`) — `lintFile(path)`는 IO → YAML parse → ajv schema 검증 → semantic rules 순으로 단락 실행하고 `{ ok, errors: LintError[] }` 반환. 스키마 실패 시 semantic은 건너뜀. 규칙 함수는 순수 (단일 `ToolDefinition` 또는 전체 `tools[]` 입력). `@hhowi/aiglue-core`는 `lintFile`과 관련 타입을 public export.
 - **`cli/`** (`index.ts`·`lint.ts`·`init.ts`·`mcp.ts`) — `process.argv` 디스패처 + `CliIO` 인터페이스(DI)로 테스트 가능. `runLint`는 human/`--json` 출력 + exit 0/1/2. `runInit`은 `packages/core/assets/`에서 `.claude/skills/aiglue.md`·`.cursor/rules/aiglue.md`·`tools.yaml`을 타깃 `cwd`에 복사하며 기본은 존재 시 skip, `--force`로 덮어쓰기. `runMCP`는 `aiglue mcp serve --tools <path> --base-url <url>` 서브커맨드로 stdio MCP 서버를 띄움.
 - **`mcp/server.ts`** — `createMCPServer({ toolsPath, baseUrl, authToken, … })`이 `@modelcontextprotocol/sdk`의 low-level `Server`를 반환. 내부적으로 `ToolRegistry` + `Executor`를 그대로 재사용 — tools.yaml 한 장이 사내 챗봇 + 외부 MCP 호스트(Claude Desktop·Cursor·Cline) 양쪽에 그대로 흐른다. `risk_level`은 description 프리픽스(`[WRITE OPERATION]`/`[CRITICAL OPERATION — IRREVERSIBLE]`)로 호스트에 신호를 보내고 confirm UI는 호스트가 책임짐. 인증은 `AIGLUE_AUTH_TOKEN` env (CLI) 또는 `authToken` 옵션 (programmatic)으로 Bearer 헤더 패스스루.
 
@@ -144,10 +144,10 @@ processMessage(userText, { authToken, userId, history })
   - **Custom LLM provider**: `LLMConfig.provider: 'custom' + instance: LLMProvider`. `LLMProvider`/`ChatOptions`/`ChatResponse` 타입을 public export. AWS Bedrock·사내 LLM 게이트웨이·multi-provider routing·결정적 mocking 모두 사용자 코드로 가능.
   - **Zero-config**: `LLMConfig` 자체가 optional. 생략 시 `{ provider: 'claude' }` 기본 + Anthropic SDK가 `ANTHROPIC_API_KEY` env 자동 인식 → 최소 설정 `{ tools: './tools.yaml' }`.
   - **Framework adapters**: `engine.handler()` (Express, 기존) + `engine.fastifyHandler()` + `engine.honoHandler()`. 모두 같은 framework-agnostic 코어 `engine.dispatch({ body, headers, rawRequest? })`를 통과 — 새 런타임은 그 코어를 직접 호출하면 됨 (Koa·CF Workers·Lambda 등).
-  - `@aiglue/core` MCP server: `aiglue mcp serve --tools <path> --base-url <url> [--transport stdio|http --port <n>]` + programmatic `createMCPServer()`. stdio + StreamableHTTP 양쪽 지원. HTTP 모드는 stateless로 매 요청마다 server+transport를 만들어 클라이언트의 `Authorization: Bearer ...` 헤더를 그대로 upstream `authToken`으로 패스스루(멀티 테넌트 친화). `AIGLUE_AUTH_TOKEN` env는 이제 fallback 역할. risk_level description 프리픽스로 호스트 confirm UI 트리거.
+  - `@hhowi/aiglue-core` MCP server: `aiglue mcp serve --tools <path> --base-url <url> [--transport stdio|http --port <n>]` + programmatic `createMCPServer()`. stdio + StreamableHTTP 양쪽 지원. HTTP 모드는 stateless로 매 요청마다 server+transport를 만들어 클라이언트의 `Authorization: Bearer ...` 헤더를 그대로 upstream `authToken`으로 패스스루(멀티 테넌트 친화). `AIGLUE_AUTH_TOKEN` env는 이제 fallback 역할. risk_level description 프리픽스로 호스트 confirm UI 트리거.
   - `aiglue generate-mcp --tools <path> --base-url <url> --output <dir>`: tools.yaml 복사 + `claude_desktop_config.snippet.json` (절대경로 baked) + 설치 README를 한 폴더로 출력. "받아서 README 따라 1번 따라하면 끝" 패키지로 사내 배포·교육용.
-  - `@aiglue/client`: headless React hook (`useAIGlue`), confirm 토큰 자동 echo + 멀티턴 history 자동 누적.
-  - `@aiglue/client-vue`: 같은 API surface의 Vue 3 composable. happy-dom 테스트.
+  - `@hhowi/aiglue-client`: headless React hook (`useAIGlue`), confirm 토큰 자동 echo + 멀티턴 history 자동 누적.
+  - `@hhowi/aiglue-client-vue`: 같은 API surface의 Vue 3 composable. happy-dom 테스트.
   - `AIEClarifyResponse` 생성 경로: IntentResolver가 `__aiglue_clarify__` reserved 메타 tool을 자동 주입, LLM이 모호 시 호출하면 engine이 SafetyGate/Executor 직전에 intercept해 `{type:'clarify', question, options?}` 반환. 호스트는 options를 버튼으로 렌더 가능.
   - Tool-index 2-stage routing: `routing.strategy: 'auto' | 'single' | 'two-stage'` + `twoStageThreshold` (default 30). auto가 새 default — tool 30+개에서 자동 발동.
-- 미구현(의도적 공백): Svelte 클라이언트 어댑터, `@aiglue/mcp` 별도 패키지(현재 `@aiglue/core`에 통합), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, MCP SSE 전용 transport(현재 StreamableHTTP만), 토큰 streaming 응답. 설계 스펙: `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 등. 방향성: `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md`.
+- 미구현(의도적 공백): Svelte 클라이언트 어댑터, MCP 서버 별도 패키지 분리(현재 `@hhowi/aiglue-core`에 통합), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, MCP SSE 전용 transport(현재 StreamableHTTP만), 토큰 streaming 응답. 설계 스펙: `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 등. 방향성: `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md`.

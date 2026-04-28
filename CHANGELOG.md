@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@aiglue/core` are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to `@hhowi/aiglue-core` are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
@@ -13,7 +13,7 @@ All notable changes to `@aiglue/core` are documented here. The format follows [K
 - **OpenTelemetry tracing hook.** `observability.tracer` accepts any tracer with the `@opentelemetry/api` shape (no hard dep — pass `trace.getTracer('aiglue')`). The engine emits an `aiglue.processMessage` root span (and `aiglue.confirmAndExecute` for the second leg) tagged with `aiglue.tool_name`, `aiglue.risk_level`, `aiglue.response_type`, `aiglue.tokens_in/out`, `aiglue.error_code`, `aiglue.user_id`, and `aiglue.routing_fellback`. Status is `OK` on success and `ERROR` on engine-domain errors with the code as the message. NoOp by default — no observability stack required to run.
 - **`aiglue generate-mcp`** emits a self-contained `tools.yaml` + Claude Desktop config snippet + install README into `--output <dir>`. Lets operators forward "drop and follow README" bundles to teammates without explaining `npx` flags.
 - **`AIEClarifyResponse` is now produced.** A reserved `__aiglue_clarify__` meta tool is auto-injected into the LLM's tool list; when the LLM calls it (instead of guessing on ambiguous input), the engine intercepts before SafetyGate / Executor and returns `{ type: 'clarify', question, options? }`. Hosts can render `options` as buttons.
-- **`@aiglue/client-vue@0.1.0`** mirrors the `@aiglue/client` React hook as a Vue 3 composable. Same API surface, Vue refs instead of React state. Independent semver.
+- **`@hhowi/aiglue-client-vue@0.1.0`** mirrors the `@hhowi/aiglue-client` React hook as a Vue 3 composable. Same API surface, Vue refs instead of React state. Independent semver.
 - **Custom LLM provider** — `LLMConfig.provider: 'custom'` + `instance: LLMProvider` lets you plug in any object that implements the `LLMProvider` interface (which is now publicly exported). Unlocks AWS Bedrock, internal LLM gateways, Azure OpenAI direct, multi-provider routing, and deterministic test mocks without monkey-patching internals. Throws at construction when `'custom'` is set without an `instance`.
 - **`llm` config is now optional.** Omit it and aiglue defaults to Claude with env-driven auth — the Anthropic SDK picks up `ANTHROPIC_API_KEY` from the environment. Minimum config drops to `{ tools: './tools.yaml' }`.
 - **Fastify + Hono adapters.** `engine.fastifyHandler()` / `engine.honoHandler()` wrap the existing Express `engine.handler()` so the same engine drives every common Node runtime. A new `engine.dispatch({ body, headers, rawRequest? })` exposes the framework-agnostic core for runtimes the built-in adapters do not cover (Koa, Cloudflare Workers, AWS Lambda, custom).
@@ -32,7 +32,7 @@ All notable changes to `@aiglue/core` are documented here. The format follows [K
 
 ### Added
 
-- **MCP server.** `aiglue mcp serve --tools <path> --base-url <url>` exposes the same `tools.yaml` as a Model Context Protocol server over stdio, ready to plug into Claude Desktop / Cursor / Cline. `AIGLUE_AUTH_TOKEN` env var is forwarded as `Authorization: Bearer …` on every upstream call. Risk-level signals (`[WRITE OPERATION]` / `[CRITICAL OPERATION — IRREVERSIBLE]`) are added to the MCP-visible description so the host's confirm UI can react. Programmatic `createMCPServer({ toolsPath, baseUrl, authToken })` exported from `@aiglue/core`.
+- **MCP server.** `aiglue mcp serve --tools <path> --base-url <url>` exposes the same `tools.yaml` as a Model Context Protocol server over stdio, ready to plug into Claude Desktop / Cursor / Cline. `AIGLUE_AUTH_TOKEN` env var is forwarded as `Authorization: Bearer …` on every upstream call. Risk-level signals (`[WRITE OPERATION]` / `[CRITICAL OPERATION — IRREVERSIBLE]`) are added to the MCP-visible description so the host's confirm UI can react. Programmatic `createMCPServer({ toolsPath, baseUrl, authToken })` exported from `@hhowi/aiglue-core`.
 - **`engine.reload()` + hot reload polling.** `ToolRegistry.loadFromFile()` builds the new map and atomic-swaps; failures roll back. `engine.reload()` triggers it explicitly; `HotReloadConfig.pollIntervalMs` (default `0` / disabled) optionally polls `tools.yaml` mtime.
 - **`engine.dispose()`** stops the rate-limiter sweeper and the reload poller for clean shutdown.
 - **Confirm idempotency.** `AIEConfirmResponse` now carries a server-issued `confirmToken: string`; the client echoes it as `idempotencyKey` in the confirm submission. Within a 5-minute TTL the same key returns the cached response (success + deterministic 4xx). Transient 5xx is **not** cached so retries can succeed once upstream recovers.

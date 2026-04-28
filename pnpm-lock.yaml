@@ -10,7 +10,7 @@ importers:
 
   examples/minimal:
     dependencies:
-      '@aiglue/core':
+      '@hhowi/aiglue-core':
         specifier: workspace:*
         version: link:../../packages/core
       express:
@@ -26,7 +26,7 @@ importers:
 
   packages/client:
     dependencies:
-      '@aiglue/core':
+      '@hhowi/aiglue-core':
         specifier: workspace:^
         version: link:../core
     devDependencies:
@@ -60,7 +60,7 @@ importers:
 
   packages/client-vue:
     dependencies:
-      '@aiglue/core':
+      '@hhowi/aiglue-core':
         specifier: workspace:^
         version: link:../core
     devDependencies:

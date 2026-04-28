@@ -8,10 +8,10 @@ alwaysApply: false
 
 # aiglue tools.yaml 작성 지침
 
-이 규칙은 `tools.yaml`을 편집할 때 자동 적용됩니다. `@aiglue/core` 런타임이 이 파일을 읽어 LLM tool 정의·safety whitelist·executor 라우팅을 모두 구성합니다.
+이 규칙은 `tools.yaml`을 편집할 때 자동 적용됩니다. `@hhowi/aiglue-core` 런타임이 이 파일을 읽어 LLM tool 정의·safety whitelist·executor 라우팅을 모두 구성합니다.
 
 ## 스키마 원본
-`node_modules/@aiglue/core/schema/tools.schema.json` — 모호하면 이 파일을 참조.
+`node_modules/@hhowi/aiglue-core/schema/tools.schema.json` — 모호하면 이 파일을 참조.
 
 ## 필수 규칙
 

@@ -1,5 +1,5 @@
 {
-  "name": "@aiglue/core",
+  "name": "@hhowi/aiglue-core",
   "version": "0.3.0",
   "description": "YAML config turns any REST API into an AI-powered natural language interface",
   "type": "module",

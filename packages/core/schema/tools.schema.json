@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://aiglue.dev/schema/tools.schema.json",
   "title": "aiglue tools.yaml",
-  "description": "Canonical schema for aiglue tool definitions consumed by @aiglue/core and authored by IDE AI assistants.",
+  "description": "Canonical schema for aiglue tool definitions consumed by @hhowi/aiglue-core and authored by IDE AI assistants.",
   "type": "object",
   "required": ["tools_yaml_version", "tools"],
   "additionalProperties": false,

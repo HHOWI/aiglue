@@ -27,7 +27,7 @@ aiglue 없이:            aiglue 사용:
 
 5~7주                   반나절
 LangChain 학습          tools.yaml 작성
-Tool 코드 45개 작성     npm install @aiglue/core
+Tool 코드 45개 작성     npm install @hhowi/aiglue-core
 인증 처리 구현          서버 코드 5줄
 응답 포맷팅 구현        끝.
 안전 장치 구현
@@ -39,7 +39,7 @@ Tool 코드 45개 작성     npm install @aiglue/core
 ### 1. 설치
 
 ```bash
-npm install @aiglue/core
+npm install @hhowi/aiglue-core
 npx aiglue init     # IDE AI 스킬·룰·tools.yaml 스켈레톤 복사
 
 # OpenAPI 3 스펙이 이미 있다면, 스켈레톤 대신 그 스펙으로 tools.yaml 자동 생성:
@@ -105,7 +105,7 @@ tools:
 
 ```ts
 import express from 'express'
-import { createAIEngine } from '@aiglue/core'
+import { createAIEngine } from '@hhowi/aiglue-core'
 
 const app = express()
 app.use(express.json())
@@ -147,10 +147,10 @@ curl -X POST http://localhost:3100/ai/chat \
 
 **프론트엔드에서 원하는 대로 렌더링하세요.** aiglue는 구조화된 데이터를 반환할 뿐, UI를 강제하지 않습니다.
 
-React 프로젝트라면 [`@aiglue/client`](./packages/client/)가 보일러플레이트(confirm 토큰 echo, 멀티턴 히스토리, 전송 vs 엔진 에러 분리)를 대신 처리해줍니다:
+React 프로젝트라면 [`@hhowi/aiglue-client`](./packages/client/)가 보일러플레이트(confirm 토큰 echo, 멀티턴 히스토리, 전송 vs 엔진 에러 분리)를 대신 처리해줍니다:
 
 ```tsx
-import { useAIGlue } from '@aiglue/client'
+import { useAIGlue } from '@hhowi/aiglue-client'
 
 const { send, sendConfirm, result, loading } = useAIGlue({ endpoint: '/ai/chat' })
 // result.type → 'text' | 'table' | 'summary' | 'action' | 'confirm' | 'error' | …
@@ -423,7 +423,7 @@ risk_level 안전장치: `risk_level: write` 도구는 description에 `[WRITE OP
 자체 MCP 호스트 임베딩용 프로그래매틱 API:
 
 ```ts
-import { createMCPServer } from '@aiglue/core'
+import { createMCPServer } from '@hhowi/aiglue-core'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 const server = createMCPServer({
@@ -614,8 +614,8 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] OpenAI 호환 Provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM 등)
 - [x] 운영 강화 (LLM·HTTP 타임아웃, 응답 크기 cap, history 토큰 예산, confirm 멱등성, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — `tools.yaml`을 stdio 기반 MCP 서버로 노출 (Claude Desktop · Cursor · Cline …)
-- [x] `@aiglue/client` — `/ai/chat` 용 headless React hook (confirm 토큰 자동 echo, 멀티턴 히스토리)
-- [x] `@aiglue/client-vue` — Vue 3 composable로 `@aiglue/client` 미러링
+- [x] `@hhowi/aiglue-client` — `/ai/chat` 용 headless React hook (confirm 토큰 자동 echo, 멀티턴 히스토리)
+- [x] `@hhowi/aiglue-client-vue` — Vue 3 composable로 `@hhowi/aiglue-client` 미러링
 - [x] `npx aiglue init --swagger <path-or-url>` — OpenAPI 3.x 스펙에서 `tools.yaml` 자동 생성
 - [x] `npx aiglue generate-mcp` — 배포용 self-contained MCP 설치 번들 출력
 - [x] `aiglue mcp serve --transport http` — 중앙 호스팅 MCP 서버용 StreamableHTTP transport

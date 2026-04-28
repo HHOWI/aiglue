@@ -6,7 +6,7 @@
     "start": "npx tsx server.ts"
   },
   "dependencies": {
-    "@aiglue/core": "workspace:*",
+    "@hhowi/aiglue-core": "workspace:*",
     "express": "^4.21.0"
   },
   "devDependencies": {

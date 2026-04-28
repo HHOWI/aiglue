@@ -1,18 +1,18 @@
-# @aiglue/client
+# @hhowi/aiglue-client
 
-Headless React hook for the [`@aiglue/core`](../core/README.md) `/ai/chat` endpoint. Owns the boilerplate every aiglue frontend used to repeat — confirm-token echo, multi-turn history, transport vs engine error split — and stays out of your UI's way.
+Headless React hook for the [`@hhowi/aiglue-core`](../core/README.md) `/ai/chat` endpoint. Owns the boilerplate every aiglue frontend used to repeat — confirm-token echo, multi-turn history, transport vs engine error split — and stays out of your UI's way.
 
 ## Install
 
 ```bash
-npm install @aiglue/client @aiglue/core
+npm install @hhowi/aiglue-client @hhowi/aiglue-core
 # react 18 or 19 is a peer dep
 ```
 
 ## Use
 
 ```tsx
-import { useAIGlue } from '@aiglue/client'
+import { useAIGlue } from '@hhowi/aiglue-client'
 
 export function Chat() {
   const { send, sendConfirm, result, history, loading, error, reset } = useAIGlue({

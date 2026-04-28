@@ -29,7 +29,7 @@ Without aiglue:        With aiglue:
                         
 5-7 weeks              Half a day
 Learn LangChain        Write tools.yaml
-Write tool code x45    npm install @aiglue/core
+Write tool code x45    npm install @hhowi/aiglue-core
 Handle auth            5 lines of server code
 Handle formatting      Done.
 Handle safety
@@ -41,7 +41,7 @@ Build chat UI
 ### 1. Install
 
 ```bash
-npm install @aiglue/core
+npm install @hhowi/aiglue-core
 npx aiglue init     # Copies IDE AI skill + rule + tools.yaml skeleton
 
 # Already have an OpenAPI 3 spec? Skip the skeleton and generate tools.yaml from it:
@@ -107,7 +107,7 @@ tools:
 
 ```ts
 import express from 'express'
-import { createAIEngine } from '@aiglue/core'
+import { createAIEngine } from '@hhowi/aiglue-core'
 
 const app = express()
 app.use(express.json())
@@ -149,10 +149,10 @@ Response:
 
 **Your frontend renders this however you want.** aiglue gives you structured data, not opinionated UI.
 
-For React projects, [`@aiglue/client`](./packages/client/) wraps the boilerplate (confirm-token echo, multi-turn history, transport vs engine error split):
+For React projects, [`@hhowi/aiglue-client`](./packages/client/) wraps the boilerplate (confirm-token echo, multi-turn history, transport vs engine error split):
 
 ```tsx
-import { useAIGlue } from '@aiglue/client'
+import { useAIGlue } from '@hhowi/aiglue-client'
 
 const { send, sendConfirm, result, loading } = useAIGlue({ endpoint: '/ai/chat' })
 // result.type → 'text' | 'table' | 'summary' | 'action' | 'confirm' | 'error' | …
@@ -266,7 +266,7 @@ llm: {
 }
 
 // Custom — bring your own LLMProvider (AWS Bedrock, internal gateway, multi-provider routing, …)
-import type { LLMProvider } from '@aiglue/core'
+import type { LLMProvider } from '@hhowi/aiglue-core'
 
 class BedrockProvider implements LLMProvider {
   async resolve(messages, tools) { /* AWS Bedrock SDK call */ }
@@ -441,7 +441,7 @@ Risk-level safety: tools with `risk_level: write` are prefixed with `[WRITE OPER
 Programmatic API for embedding in your own MCP host:
 
 ```ts
-import { createMCPServer } from '@aiglue/core'
+import { createMCPServer } from '@hhowi/aiglue-core'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 const server = createMCPServer({
@@ -632,8 +632,8 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] OpenAI-compatible provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM, etc.)
 - [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, hot reload, Anthropic prompt caching)
 - [x] `aiglue mcp serve` — expose tools.yaml as an MCP server over stdio (Claude Desktop, Cursor, Cline, …)
-- [x] `@aiglue/client` — headless React hook for `/ai/chat` (auto confirm-token echo, multi-turn history)
-- [x] `@aiglue/client-vue` — Vue 3 composable mirror of `@aiglue/client`
+- [x] `@hhowi/aiglue-client` — headless React hook for `/ai/chat` (auto confirm-token echo, multi-turn history)
+- [x] `@hhowi/aiglue-client-vue` — Vue 3 composable mirror of `@hhowi/aiglue-client`
 - [x] `npx aiglue init --swagger <path-or-url>` — generate `tools.yaml` from an OpenAPI 3.x spec
 - [x] `npx aiglue generate-mcp` — emit a self-contained MCP install bundle for distribution
 - [x] `aiglue mcp serve --transport http` — StreamableHTTP transport for centrally hosted MCP servers

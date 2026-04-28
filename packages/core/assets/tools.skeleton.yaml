@@ -1,7 +1,7 @@
 tools_yaml_version: "1.0"
 
 # aiglue tools.yaml — authored with help from your IDE AI assistant.
-# Schema reference: node_modules/@aiglue/core/schema/tools.schema.json
+# Schema reference: node_modules/@hhowi/aiglue-core/schema/tools.schema.json
 #
 # Each tool maps ONE natural-language intent to ONE REST endpoint.
 # Keep descriptions short and concrete — the LLM reads them to pick a tool.

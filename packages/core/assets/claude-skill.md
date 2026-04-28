@@ -1,16 +1,16 @@
 ---
 name: aiglue
-description: Use when authoring or editing aiglue tools.yaml — the file that maps natural-language intents to REST endpoints for the @aiglue/core runtime.
+description: Use when authoring or editing aiglue tools.yaml — the file that maps natural-language intents to REST endpoints for the @hhowi/aiglue-core runtime.
 ---
 
 # aiglue tools.yaml 작성 지침
 
-이 스킬은 `tools.yaml`에 도구 정의를 **추가·수정·검증**할 때 사용합니다. `@aiglue/core` 런타임은 이 파일을 whitelist·LLM 프롬프트·실행기의 유일한 소스로 사용합니다.
+이 스킬은 `tools.yaml`에 도구 정의를 **추가·수정·검증**할 때 사용합니다. `@hhowi/aiglue-core` 런타임은 이 파일을 whitelist·LLM 프롬프트·실행기의 유일한 소스로 사용합니다.
 
 ## 작업 시작 전
 
-1. 프로젝트 루트에 `tools.yaml`이 있는지 확인. 없으면 `node_modules/@aiglue/core/assets/tools.skeleton.yaml`을 복사.
-2. 스키마 원본: `node_modules/@aiglue/core/schema/tools.schema.json` — 애매하면 이걸 열어 검증.
+1. 프로젝트 루트에 `tools.yaml`이 있는지 확인. 없으면 `node_modules/@hhowi/aiglue-core/assets/tools.skeleton.yaml`을 복사.
+2. 스키마 원본: `node_modules/@hhowi/aiglue-core/schema/tools.schema.json` — 애매하면 이걸 열어 검증.
 3. 작업 완료 후 `npx aiglue lint tools.yaml` 실행.
 
 ## 도구 하나 정의하는 방법

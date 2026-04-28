@@ -46,18 +46,18 @@ jobs:
           pnpm dlx publint packages/client
           pnpm dlx publint packages/client-vue
 
-      - name: Publish @aiglue/core
-        run: pnpm --filter @aiglue/core publish --access public --no-git-checks --provenance
+      - name: Publish @hhowi/aiglue-core
+        run: pnpm --filter @hhowi/aiglue-core publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @aiglue/client
-        run: pnpm --filter @aiglue/client publish --access public --no-git-checks --provenance
+      - name: Publish @hhowi/aiglue-client
+        run: pnpm --filter @hhowi/aiglue-client publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @aiglue/client-vue
-        run: pnpm --filter @aiglue/client-vue publish --access public --no-git-checks --provenance
+      - name: Publish @hhowi/aiglue-client-vue
+        run: pnpm --filter @hhowi/aiglue-client-vue publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

@@ -1,11 +1,11 @@
-# @aiglue/client-vue
+# @hhowi/aiglue-client-vue
 
-Vue 3 composable mirror of [`@aiglue/client`](../client/README.md). Same headless API — same confirm-token auto-echo, multi-turn history relay, and transport vs engine error split — exposed as Vue refs.
+Vue 3 composable mirror of [`@hhowi/aiglue-client`](../client/README.md). Same headless API — same confirm-token auto-echo, multi-turn history relay, and transport vs engine error split — exposed as Vue refs.
 
 ## Install
 
 ```bash
-npm install @aiglue/client-vue @aiglue/core
+npm install @hhowi/aiglue-client-vue @hhowi/aiglue-core
 # vue 3.x is a peer dep
 ```
 
@@ -13,7 +13,7 @@ npm install @aiglue/client-vue @aiglue/core
 
 ```vue
 <script setup lang="ts">
-import { useAIGlue } from '@aiglue/client-vue'
+import { useAIGlue } from '@hhowi/aiglue-client-vue'
 
 const { send, sendConfirm, result, loading, error, reset } = useAIGlue({
   endpoint: '/ai/chat',
@@ -63,7 +63,7 @@ useAIGlue(options: {
 }
 ```
 
-Behavior matches [`@aiglue/client`](../client/README.md) one-to-one — see that README for confirm idempotency, history relay, and the transport vs engine error split.
+Behavior matches [`@hhowi/aiglue-client`](../client/README.md) one-to-one — see that README for confirm idempotency, history relay, and the transport vs engine error split.
 
 ## What this composable does NOT do
 

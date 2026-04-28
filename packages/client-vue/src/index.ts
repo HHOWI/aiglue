@@ -12,4 +12,4 @@ export type {
   AIEClarifyResponse,
   AIEErrorResponse,
   ChatMessage,
-} from '@aiglue/core'
+} from '@hhowi/aiglue-core'

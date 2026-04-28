@@ -1,5 +1,5 @@
 import { useCallback, useReducer, useRef } from 'react'
-import type { AIEResponse, ChatMessage } from '@aiglue/core'
+import type { AIEResponse, ChatMessage } from '@hhowi/aiglue-core'
 
 export interface UseAIGlueOptions {
   /** Endpoint that hosts engine.handler() — typically POST /ai/chat. */

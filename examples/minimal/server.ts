@@ -1,5 +1,5 @@
 import express from 'express'
-import { createAIEngine } from '@aiglue/core'
+import { createAIEngine } from '@hhowi/aiglue-core'
 
 const app = express()
 app.use(express.json())

@@ -28,25 +28,25 @@ const stubs = {
   'validate/lint.js': `'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
 /**
- * lintFile is only available in the ESM build of @aiglue/core.
+ * lintFile is only available in the ESM build of @hhowi/aiglue-core.
  * If you need it from a CommonJS project, use dynamic import:
- *   const { lintFile } = await import('@aiglue/core');
+ *   const { lintFile } = await import('@hhowi/aiglue-core');
  */
 exports.lintFile = function lintFile() {
   throw new Error(
-    '@aiglue/core: lintFile is only available in the ESM build. ' +
-    "Use: const { lintFile } = await import('@aiglue/core')"
+    '@hhowi/aiglue-core: lintFile is only available in the ESM build. ' +
+    "Use: const { lintFile } = await import('@hhowi/aiglue-core')"
   );
 };
 `,
   'cli/init.js': `'use strict';
 Object.defineProperty(exports, '__esModule', { value: true });
 /**
- * runInit is only available in the ESM build of @aiglue/core.
+ * runInit is only available in the ESM build of @hhowi/aiglue-core.
  */
 exports.runInit = function runInit() {
   throw new Error(
-    '@aiglue/core: runInit is only available in the ESM build.'
+    '@hhowi/aiglue-core: runInit is only available in the ESM build.'
   );
 };
 `,
