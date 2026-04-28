@@ -313,9 +313,15 @@ if (!result.ok) console.error('reload failed:', result.error)
 
 Reload is atomic — parse / validation failures leave the existing registry intact.
 
-#### Prompt caching (Claude)
+#### Prompt caching
 
-Anthropic prompt caching is applied automatically on tool definitions + system prompt. Cache hits within the 5-minute Anthropic TTL get ~90% input-token discount. No user action needed. For larger catalogs (~50+ tools) where caching alone is not enough, see the design spec at `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`.
+| Provider | How aiglue handles it | Cache TTL | Discount on hit |
+|---|---|---|---|
+| **Claude (Anthropic)** | Explicit `cache_control: { type: 'ephemeral' }` on the last tool and the system block — applied automatically by `ClaudeProvider.resolve()`. | 5 min | ~90% on cached input tokens |
+| **OpenAI-compatible** (OpenAI, Groq, Together AI, etc.) | No explicit markers. The provider's own automatic prefix caching kicks in for prefixes ≥ 1024 tokens. | Provider-defined (OpenAI: 5–10 min idle) | 50% on OpenAI; varies elsewhere |
+| **Local runners** (Ollama, vLLM, llama.cpp, …) | No caching layer. Re-evaluates the full prompt every call. | n/a | n/a |
+
+Both API-hosted paths benefit from keeping `tools.yaml` and the system prompt stable — every change invalidates the cached prefix. For larger catalogs (~50+ tools) where caching alone is not enough, see the design spec at `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`.
 
 ### Headless (No UI Opinion)
 

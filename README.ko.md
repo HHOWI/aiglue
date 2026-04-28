@@ -311,9 +311,15 @@ if (!result.ok) console.error('reload failed:', result.error)
 
 reload는 atomic — 파싱·검증 실패 시 기존 registry는 그대로 살아있습니다.
 
-#### Prompt caching (Claude)
+#### Prompt caching — 프로바이더별 동작
 
-매 `resolve()` 호출마다 Anthropic prompt caching을 자동 적용합니다 (tool 정의 + system 프롬프트). 5분 TTL 내 cache hit 시 입력 토큰의 ~90% 할인. 별도 설정 불필요. tool이 50개 이상으로 늘어 캐싱만으로 부족해지면 `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 설계 스펙을 참고하세요.
+| 프로바이더 | aiglue 처리 방식 | 캐시 TTL | hit 시 할인 |
+|---|---|---|---|
+| **Claude (Anthropic)** | `ClaudeProvider.resolve()`가 마지막 tool + system block에 `cache_control: { type: 'ephemeral' }`를 자동 부여 | 5분 | 입력 토큰 ~90% |
+| **OpenAI 호환** (OpenAI, Groq, Together AI 등) | 별도 마커 없음. 프로바이더 측 automatic prefix caching이 ≥ 1024 토큰 prefix에 자동 적용 | 프로바이더 정책 (OpenAI: 유휴 5–10분) | OpenAI 50%, 그 외 가변 |
+| **로컬 런너** (Ollama, vLLM, llama.cpp 등) | 캐싱 없음 — 매 호출 전체 재평가 | 해당 없음 | 해당 없음 |
+
+두 API 호스팅 경로 모두 `tools.yaml`과 system prompt가 안정적일수록 효율적입니다 — 변경할 때마다 캐시된 prefix가 무효화됩니다. tool이 50개 이상으로 늘어 캐싱만으로 부족해지면 `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 설계 스펙을 참고하세요.
 
 ### Headless (UI 자유도 100%)
 
