@@ -2,6 +2,7 @@
 import { runLint } from './lint.js'
 import { runInit } from './init.js'
 import { runMCP } from './mcp.js'
+import { runGenerateMCP } from './generate-mcp.js'
 
 async function main(): Promise<void> {
   const [, , subcommand, ...rest] = process.argv
@@ -17,7 +18,8 @@ async function main(): Promise<void> {
       'subcommands:\n' +
       '  lint <file>                       Validate tools.yaml against schema and semantic rules\n' +
       '  init [--swagger <path-or-url>]    Install IDE AI assets and a tools.yaml (skeleton or generated from OpenAPI 3)\n' +
-      '  mcp serve                         Expose tools.yaml as an MCP server over stdio\n',
+      '  mcp serve                         Expose tools.yaml as an MCP server over stdio\n' +
+      '  generate-mcp                      Emit a self-contained Claude Desktop / Cursor / Cline install bundle\n',
     )
     process.exit(0)
   }
@@ -32,6 +34,9 @@ async function main(): Promise<void> {
       break
     case 'mcp':
       code = await runMCP(rest, io)
+      break
+    case 'generate-mcp':
+      code = await runGenerateMCP(rest, io)
       break
     default:
       io.stderr(`unknown subcommand: ${subcommand}\n`)
