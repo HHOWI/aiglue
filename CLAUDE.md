@@ -60,40 +60,52 @@ node packages/core/dist/cli/index.js init [--cwd <path>] [--force]
 
 ```
 processMessage(userText, { authToken, userId, history })
-  1. RateLimiter.check(userId)          // rate-limiter.ts, "60/min" 포맷 파싱
+  1. RateLimiter.check(userId)          // rate-limiter.ts, "60/min" 포맷 파싱.
+                                        //   백그라운드 sweep(default 60s, .unref)으로 만료 entry 정리. dispose()로 종료.
   2. trimHistory(history)               // engine.ts — tail slice, default maxMessages=10
-                                        //   config.history.maxMessages로 override
+                                        //   config.history.maxMessages, .maxTokens(~4 char/token 추정)로 override
+                                        //   토큰 예산 초과 시 오래된 것부터 drop, 최신 1개는 항상 보존
   3. IntentResolver.resolve(userText, trimmedHistory)
                                         // intent-resolver.ts — system prompt + registry.toLLMTools()
-                                        //   → LLMProvider.resolve() (providers/claude.ts)
+                                        //   → LLMProvider.resolve() (providers/{claude,openai}.ts)
+                                        //   Claude는 tools 마지막+system block에 cache_control: ephemeral 자동 적용
+                                        //   config.llm.timeoutMs로 호출 타임아웃 (default 30s)
   4. 분기:
      - toolCall 없음        → text 응답
-     - SafetyGate.check()   // safety.ts — whitelist + risk_level
+     - SafetyGate.check()   // safety.ts — whitelist + risk_level (allow / requiresConfirm / reason)
          · 화이트리스트 외 → error
          · risk_level=read → 통과
-         · write|critical  → confirm 응답 (실행 안 함)
-     - Executor.execute()   // executor.ts — endpoint 파싱, :path 치환, query/body 빌드, fetch
-  5. ResponseFormatter.format()         // response-formatter.ts — tool.response_type에 따라 text/table
-  6. Logger.log(RequestLog)             // logger.ts — JSON 한 줄 stdout
+         · write|critical  → confirm 응답 (실행 안 함, server-issued confirmToken 포함)
+     - Executor.execute()   // executor.ts — endpoint 파싱, :path 치환(encodeURIComponent), query/body 빌드, fetch
+                            //   timeoutMs(default 10s) + maxResponseBytes(default 5MB, stream-read with abort)
+  5. ResponseFormatter.format()         // response-formatter.ts — tool.response_type에 따라 text/table/raw/summary
+  6. Logger.log(RequestLog)             // logger.ts — JSON 한 줄 stdout. 사용자 노출 메시지는 일반화(messages.upstreamError/internalError),
+                                        //   원본 err.message·status는 logger에만.
 ```
 
 `history`는 aiglue가 저장하지 않는다. 클라이언트가 매 요청에 `ChatMessage[]`를 실어 보내고, 엔진은 최근 N개만 resolver에 릴레이한다. 용도는 `clarify` 후속 답변·`confirm` 수정·짧은 파라미터 변경("지난주는?") 해석에 국한. 누적 대화·멀티턴 에이전트는 스코프 밖 (agent 프레임워크가 aiglue를 tool 제공자로 호출하는 구조).
 
-`confirmAndExecute()`는 클라이언트가 `confirm` 응답을 받은 뒤 동의했을 때 호출하는 별도 경로로, resolve·safety를 건너뛰고 executor부터 시작한다. 즉 **확인은 클라이언트 측 라운드트립**이며 엔진은 상태를 갖지 않는다.
+`confirmAndExecute()`는 클라이언트가 `confirm` 응답을 받은 뒤 동의했을 때 호출하는 별도 경로로, resolve·safety를 건너뛰고 executor부터 시작한다. 즉 **확인은 클라이언트 측 라운드트립**이며 엔진은 상태를 갖지 않는다. 단, `idempotencyKey`(`confirm` 응답의 `confirmToken`을 echo)를 받으면 `IdempotencyStore`(5분 TTL Map)로 5분 내 동일 키 재요청을 캐시 응답으로 단축 — 더블클릭·재시도로 인한 중복 실행 방지.
+
+`engine.reload()`로 `tools.yaml`을 atomic 재로드한다 (parse·validation 실패 시 기존 registry 유지). `config.hotReload.pollIntervalMs > 0`이면 mtime 폴링으로 자동 감지. `engine.dispose()`는 RateLimiter sweep + reload poller를 모두 정지 — 종료 훅에서 호출 권장.
 
 ### 주요 모듈
 
-- **`ToolRegistry`** (`tool-registry.ts`) — `tools.yaml`을 `Map<name, ToolDefinition>`으로 로드. `toLLMTools()`가 Anthropic tool_use 스키마로 직렬화하며 이때 `examples` 배열을 description 끝에 합쳐 정확도를 높인다. `parseEndpoint("GET /path")` 유틸 포함.
-- **`IntentResolver`** — 시스템 프롬프트(영어 고정)와 선택적 `domainContext`를 합쳐 LLMProvider에 위임. 프로바이더는 `providers/types.ts`의 인터페이스를 따르며 테스트는 `engine._setProvider()`로 모킹.
-- **`Executor`** — path param은 `:key` 치환, GET은 쿼리스트링, POST/PUT/PATCH는 `request_body_template`과 params 머지. `Authorization: Bearer <token>`은 호출자가 넘긴 authToken을 그대로 릴레이 (auth 시스템은 기존 API가 소유).
-- **`SafetyGate`** — 항상 화이트리스트 우선. risk_level 미지정 시 `read`로 간주.
-- **`ResponseFormatter`** — `response_type=table`이면 `response_mapping.data_path` (점 표기 경로)로 배열 추출, 없으면 응답이 배열이라고 가정. `confirm`/`action`/`error` 빌더도 여기서 관리.
+- **`ToolRegistry`** (`tool-registry.ts`) — `tools.yaml`을 `Map<name, ToolDefinition>`으로 로드. `loadFromFile(path)` 인스턴스 메서드는 새 map을 만든 뒤 atomic swap (실패 시 기존 상태 유지) + `llmToolsCache` 무효화. `toLLMTools()`가 Anthropic tool_use 스키마로 직렬화하며 이때 `examples` 배열을 description 끝에 합쳐 정확도를 높인다. `parseEndpoint("GET /path")` 유틸 포함.
+- **`IntentResolver`** — 시스템 프롬프트(영어 고정)와 선택적 `domainContext`를 합쳐 LLMProvider에 위임. 프로바이더는 `providers/types.ts`의 인터페이스를 따르며 테스트는 `engine._setProvider()`로 모킹. `ClaudeProvider`는 tools 배열 마지막 + system block에 `cache_control: ephemeral` 자동 부여 — 5분 TTL prompt cache hit 시 ~90% 입력 토큰 할인.
+- **`Executor`** — path param은 `encodeURIComponent`로 인코딩 후 `:key` 치환(path injection 방어), GET은 쿼리스트링, POST/PUT/PATCH는 `request_body_template`과 params 머지. `Authorization: Bearer <token>`은 호출자가 넘긴 authToken을 그대로 릴레이 (auth 시스템은 기존 API가 소유). 응답은 `Content-Length` pre-check + 스트리밍 read with hard cap (`maxResponseBytes`, default 5MB). 타임아웃은 `timeoutMs`(default 10s).
+- **`SafetyGate`** — 항상 화이트리스트 우선. risk_level 미지정 시 `read`로 간주. 결과는 `{ allowed, requiresConfirm, reason? }` — 메시지 생성은 engine + `messages.confirmPrompt`가 담당.
+- **`ResponseFormatter`** — `response_type=table`이면 `response_mapping.data_path` (점 표기 경로)로 배열 추출, 없으면 응답이 배열이라고 가정. `confirm`/`action`/`error` 빌더도 여기서 관리. `formatConfirm`은 `confirmToken`(서버 발급 UUID) optional 인자 수용.
+- **`IdempotencyStore`** (`idempotency.ts`) — `Map<key, { response, expiresAt }>`. confirm 응답을 5분 TTL로 캐시. 캐시 대상은 **성공 + deterministic 4xx만**, 일시적 5xx는 캐시 제외(업스트림 복구 후 재시도 가능). `confirmAndExecute(_, _, { idempotencyKey })`에서 hit 시 cached response 반환, miss면 실행 후 record. lazy expiry (get에서만 검사).
+- **`RateLimiter`** (`rate-limiter.ts`) — `Map<key, RateLimitEntry>` + lazy eviction + 백그라운드 sweep(`setInterval`, `.unref`, default 60s, `sweepIntervalMs: 0`로 비활성). `dispose()`로 정리.
 - **`validate/`** (`lint.ts`·`rules.ts`·`types.ts`) — `lintFile(path)`는 IO → YAML parse → ajv schema 검증 → semantic rules 순으로 단락 실행하고 `{ ok, errors: LintError[] }` 반환. 스키마 실패 시 semantic은 건너뜀. 규칙 함수는 순수 (단일 `ToolDefinition` 또는 전체 `tools[]` 입력). `@aiglue/core`는 `lintFile`과 관련 타입을 public export.
 - **`cli/`** (`index.ts`·`lint.ts`·`init.ts`) — `process.argv` 디스패처 + `CliIO` 인터페이스(DI)로 테스트 가능. `runLint`는 human/`--json` 출력 + exit 0/1/2. `runInit`은 `packages/core/assets/`에서 `.claude/skills/aiglue.md`·`.cursor/rules/aiglue.md`·`tools.yaml`을 타깃 `cwd`에 복사하며 기본은 존재 시 skip, `--force`로 덮어쓰기.
 
 ### 타입 경계
 
-모든 외부 노출 타입은 `types.ts`에 모여 있고 `index.ts`에서 재export된다 (`AIEngine`·`AIEngineConfig`·`HistoryConfig`·`ChatMessage`·`AIEResponse` union·`ToolsConfig`·`ToolDefinition`·`LLMConfig`·`AuthConfig`·`LintError`·`LintResult`). `AIEResponse`는 discriminated union (`type: 'text'|'table'|'action'|'confirm'|'clarify'|'error'`)이므로 프런트 렌더링은 `type`으로 분기. `AIEClarifyResponse`는 타입은 있지만 현재 포맷터가 만들어내지는 않는다 (미구현).
+모든 외부 노출 타입은 `types.ts`에 모여 있고 `index.ts`에서 재export된다 (`AIEngine`·`AIEngineConfig`·`HistoryConfig`·`ExecutorConfig`·`HotReloadConfig`·`ChatMessage`·`AIEResponse` union·`ToolsConfig`·`ToolDefinition`·`LLMConfig`·`AuthConfig`·`MessagesConfig`·`LintError`·`LintResult`). `AIEResponse`는 discriminated union (`type: 'text'|'table'|'raw'|'summary'|'action'|'confirm'|'clarify'|'error'`)이므로 프런트 렌더링은 `type`으로 분기. `AIEConfirmResponse`에는 `confirmToken?: string`(서버 발급 UUID, idempotency용)이 포함된다. `AIEClarifyResponse`는 타입은 있지만 현재 포맷터가 만들어내지는 않는다 (미구현).
+
+**에러 코드**: `EMPTY_MESSAGE`·`RATE_LIMIT_EXCEEDED`·`TOOL_NOT_ALLOWED`·`TOOL_NOT_FOUND`·`UPSTREAM_4XX`·`UPSTREAM_5XX`·`INTERNAL_ERROR`·`DATA_PATH_NOT_FOUND`·`DATA_PATH_NOT_ARRAY`. 사용자 메시지는 `messages.upstreamError`/`messages.internalError`(일반화), 원본 detail은 logger에만.
 
 ## Code conventions
 
@@ -112,6 +124,7 @@ processMessage(userText, { authToken, userId, history })
   - `tools.yaml` JSON Schema (`packages/core/schema/`)
   - `aiglue lint` CLI — schema + 5 semantic rules, human·`--json` 출력
   - `aiglue init` CLI — Claude skill·Cursor rule·tools.yaml 스켈레톤 배포
-  - 엔진 stateless history 릴레이 (default 10개 윈도우)
+  - 엔진 stateless history 릴레이 (default 10개 윈도우 + optional 토큰 예산)
   - README 프레임워크 예시 카탈로그 (Express / FastAPI / Spring)
-- 미구현(의도적 공백): `@aiglue/client`, `@aiglue/mcp`, `npx aiglue generate-mcp`, `npx aiglue import-openapi` (1.5차), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로. 설계 결정은 `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md` 참고.
+  - **운영 강화 (2026-04-28)**: path injection 방어(`encodeURIComponent`), LLM/HTTP 타임아웃(`LLMConfig.timeoutMs` 30s, `ExecutorConfig.timeoutMs` 10s), 에러 메시지 sanitize(원본 logger에만), confirm 멱등성(`IdempotencyStore` + `confirmToken`), 응답 크기 cap(`maxResponseBytes` 5MB stream-read), RateLimiter 백그라운드 sweep, history 토큰 예산 윈도잉, Anthropic prompt caching(자동 적용), tools.yaml hot reload(`engine.reload()` + 폴링). `engine.dispose()`로 백그라운드 타이머 정리.
+- 미구현(의도적 공백): `@aiglue/client`, `@aiglue/mcp`, `npx aiglue generate-mcp`, `npx aiglue import-openapi` (1.5차), `aiglue serve` 내장 서버, 서버리스 템플릿, `auto` response_type의 AI 포맷팅, `AIEClarifyResponse` 생성 경로. 큰 도구 카탈로그(50+) 대비 인덱스 라우팅은 설계 스펙만 작성 (`docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`) — trigger 조건 충족 시 구현. 설계 결정은 `docs/superpowers/specs/2026-04-20-aiglue-direction-design.md` 참고.

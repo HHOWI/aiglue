@@ -245,11 +245,75 @@ const engine = createAIEngine({
     toolNotAvailableError: '사용할 수 없는 기능입니다.',
     rateLimitedError: '잠시 후 다시 시도해 주세요.',
     internalError: '오류가 발생했습니다.',
+    upstreamError: '외부 서비스에서 오류가 발생했습니다.',
   },
 })
 ```
 
 모든 필드는 선택입니다 — 생략하면 기본 영문 메시지가 사용됩니다.
+
+### 운영 강화 (Production hardening)
+
+기본값은 안전하게 설정되어 있고, 모든 항목을 환경에 맞춰 조정 가능합니다.
+
+```ts
+const engine = createAIEngine({
+  llm: {
+    provider: 'claude',
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    timeoutMs: 30_000,                     // LLM 호출 타임아웃 (기본 30s)
+  },
+  executor: {
+    timeoutMs: 10_000,                     // 업스트림 HTTP 타임아웃 (기본 10s)
+    maxResponseBytes: 5 * 1024 * 1024,     // 응답 본문 상한 (기본 5 MB)
+  },
+  history: {
+    maxMessages: 10,                       // 최근 N개만 유지 (기본 10)
+    maxTokens: 4000,                       // 토큰 예산 cap; 오래된 것부터 drop
+  },
+  rateLimiting: { global: '60/min', perUser: '20/min' },
+})
+
+// 종료 시 백그라운드 타이머(rate-limiter sweep, hot-reload poller) 정리
+process.on('SIGTERM', () => engine.dispose())
+```
+
+사용자에게 노출되는 에러 메시지는 일반화된 문구만 (`messages.internalError` / `messages.upstreamError`) — 업스트림의 raw 에러는 logger에만 남습니다. 에러 코드(`UPSTREAM_4XX`, `UPSTREAM_5XX`, `INTERNAL_ERROR` 등)로 클라이언트가 분기할 수 있습니다.
+
+#### Confirm 멱등성
+
+`confirm` 응답에는 서버가 발급한 `confirmToken`이 포함됩니다. 사용자가 확인하면 그 값을 `idempotencyKey`로 다시 보내 더블클릭·네트워크 재시도로 인한 중복 실행을 막을 수 있습니다:
+
+```jsonc
+// 1) 서버 응답:
+{ "type": "confirm", "toolName": "delete_post", "params": { "id": "42" }, "confirmToken": "9f2c..." }
+
+// 2) 사용자 확인 — 토큰을 echo:
+{ "action": "confirm", "toolName": "delete_post", "params": { "id": "42" }, "idempotencyKey": "9f2c..." }
+```
+
+5분 TTL 내 같은 키로 재요청하면 캐시된 응답을 돌려줍니다 — 성공과 deterministic 4xx(not found, validation 실패 등)가 캐시 대상. 일시적 5xx는 **캐시하지 않아서** 같은 키로 재시도 시 업스트림 복구 후 성공할 수 있습니다. 새 confirm 라운드트립마다 새 키를 사용하세요.
+
+#### Hot reload
+
+프로세스 재시작 없이 `tools.yaml` 변경을 반영합니다:
+
+```ts
+const engine = createAIEngine({
+  tools: './tools.yaml',
+  hotReload: { pollIntervalMs: 5_000 },  // mtime 폴링 주기 (기본 0 = 비활성)
+})
+
+// 또는 명시적 트리거 (SIGHUP 핸들러, configmap watcher, 배포 훅 등)
+const result = await engine.reload()
+if (!result.ok) console.error('reload failed:', result.error)
+```
+
+reload는 atomic — 파싱·검증 실패 시 기존 registry는 그대로 살아있습니다.
+
+#### Prompt caching (Claude)
+
+매 `resolve()` 호출마다 Anthropic prompt caching을 자동 적용합니다 (tool 정의 + system 프롬프트). 5분 TTL 내 cache hit 시 입력 토큰의 ~90% 할인. 별도 설정 불필요. tool이 50개 이상으로 늘어 캐싱만으로 부족해지면 `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md` 설계 스펙을 참고하세요.
 
 ### Headless (UI 자유도 100%)
 
@@ -451,6 +515,7 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] `npx aiglue lint` (스키마 + 시맨틱 검증 CLI)
 - [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` 스켈레톤)
 - [x] OpenAI 호환 Provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM 등)
+- [x] 운영 강화 (LLM·HTTP 타임아웃, 응답 크기 cap, history 토큰 예산, confirm 멱등성, hot reload, Anthropic prompt caching)
 - [ ] `@aiglue/client` (React/Vue hooks)
 - [ ] `@aiglue/mcp` (MCP Server)
 - [ ] `npx aiglue generate-mcp`

@@ -247,11 +247,75 @@ const engine = createAIEngine({
     toolNotAvailableError: 'This operation is not available.',
     rateLimitedError: 'Too many requests. Please wait.',
     internalError: 'An error occurred.',
+    upstreamError: 'The upstream service returned an error.',
   },
 })
 ```
 
 All fields are optional — omit any to keep the English default.
+
+### Production hardening
+
+Safe defaults out of the box; everything is tunable.
+
+```ts
+const engine = createAIEngine({
+  llm: {
+    provider: 'claude',
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    timeoutMs: 30_000,                     // LLM call timeout (default 30s)
+  },
+  executor: {
+    timeoutMs: 10_000,                     // Upstream HTTP timeout (default 10s)
+    maxResponseBytes: 5 * 1024 * 1024,     // Hard cap on response body (default 5 MB)
+  },
+  history: {
+    maxMessages: 10,                       // Tail-slice cap (default)
+    maxTokens: 4000,                       // Token-budget cap; oldest dropped first
+  },
+  rateLimiting: { global: '60/min', perUser: '20/min' },
+})
+
+// Stop background timers (rate-limiter sweep, hot-reload poller) on shutdown.
+process.on('SIGTERM', () => engine.dispose())
+```
+
+User-facing errors stay generic (`messages.internalError` / `messages.upstreamError`); raw upstream details live in the logger only. Error codes (`UPSTREAM_4XX`, `UPSTREAM_5XX`, `INTERNAL_ERROR`, etc.) let your client branch without parsing strings.
+
+#### Confirm idempotency
+
+`confirm` responses include a server-issued `confirmToken`. Echo it back as `idempotencyKey` to dedupe accidental double-clicks or network retries:
+
+```jsonc
+// 1) Server returns:
+{ "type": "confirm", "toolName": "delete_post", "params": { "id": "42" }, "confirmToken": "9f2c..." }
+
+// 2) User confirms — echo the token:
+{ "action": "confirm", "toolName": "delete_post", "params": { "id": "42" }, "idempotencyKey": "9f2c..." }
+```
+
+Within a 5-minute TTL the same key returns the cached response — for success and deterministic 4xx (e.g., not found, validation failure). Transient 5xx is **not** cached, so a retry with the same key can succeed once the upstream recovers. Use a fresh key per logical confirm round-trip.
+
+#### Hot reload
+
+Pick up `tools.yaml` edits without restarting the process:
+
+```ts
+const engine = createAIEngine({
+  tools: './tools.yaml',
+  hotReload: { pollIntervalMs: 5_000 },  // mtime check; default 0 (disabled)
+})
+
+// Or trigger explicitly (SIGHUP handler, configmap watcher, deploy hook):
+const result = await engine.reload()
+if (!result.ok) console.error('reload failed:', result.error)
+```
+
+Reload is atomic — parse / validation failures leave the existing registry intact.
+
+#### Prompt caching (Claude)
+
+Anthropic prompt caching is applied automatically on tool definitions + system prompt. Cache hits within the 5-minute Anthropic TTL get ~90% input-token discount. No user action needed. For larger catalogs (~50+ tools) where caching alone is not enough, see the design spec at `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`.
 
 ### Headless (No UI Opinion)
 
@@ -453,6 +517,7 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] `npx aiglue lint` (schema + semantic validation CLI)
 - [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` skeleton)
 - [x] OpenAI-compatible provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM, etc.)
+- [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, hot reload, Anthropic prompt caching)
 - [ ] `@aiglue/client` (React/Vue hooks)
 - [ ] `@aiglue/mcp` (MCP Server)
 - [ ] `npx aiglue generate-mcp`
