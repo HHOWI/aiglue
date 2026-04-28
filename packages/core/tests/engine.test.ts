@@ -750,6 +750,45 @@ tools:
   })
 })
 
+describe('createAIEngine — disposeOnSignal', () => {
+  it('registers and detaches SIGTERM/SIGINT handlers when enabled', async () => {
+    const before = process.listenerCount('SIGTERM')
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+      disposeOnSignal: true,
+    })
+    expect(process.listenerCount('SIGTERM')).toBe(before + 1)
+    expect(process.listenerCount('SIGINT')).toBeGreaterThan(0)
+
+    engine.dispose()
+    expect(process.listenerCount('SIGTERM')).toBe(before)
+  })
+
+  it('dispose() is idempotent', async () => {
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+      disposeOnSignal: true,
+    })
+    engine.dispose()
+    expect(() => engine.dispose()).not.toThrow()
+  })
+
+  it('does not register signal handlers when disposeOnSignal is omitted', async () => {
+    const before = process.listenerCount('SIGTERM')
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    expect(process.listenerCount('SIGTERM')).toBe(before)
+    engine.dispose()
+  })
+})
+
 describe('createAIEngine — confirmAndExecute idempotency', () => {
   it('issues a confirmToken on confirm responses', async () => {
     const engine = createAIEngine({

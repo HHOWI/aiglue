@@ -159,6 +159,9 @@ export interface AIEngineConfig {
   messages?: MessagesConfig
   executor?: ExecutorConfig
   hotReload?: HotReloadConfig
+  /** When true, the engine registers SIGTERM and SIGINT handlers that call dispose() automatically.
+   *  Default false — the host (Express, Koa, Fastify, …) usually owns shutdown signals. */
+  disposeOnSignal?: boolean
 }
 
 export interface HotReloadConfig {

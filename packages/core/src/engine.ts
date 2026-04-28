@@ -437,11 +437,28 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     reloadPoller.unref?.()
   }
 
+  let disposed = false
+  let signalHandlers: Array<{ signal: NodeJS.Signals; handler: () => void }> = []
+
   function dispose(): void {
+    if (disposed) return
+    disposed = true
     rateLimiter.dispose()
     if (reloadPoller) {
       clearInterval(reloadPoller)
       reloadPoller = null
+    }
+    for (const { signal, handler } of signalHandlers) {
+      process.off(signal, handler)
+    }
+    signalHandlers = []
+  }
+
+  if (config.disposeOnSignal) {
+    const onSignal = (): void => dispose()
+    for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+      process.on(signal, onSignal)
+      signalHandlers.push({ signal, handler: onSignal })
     }
   }
 
