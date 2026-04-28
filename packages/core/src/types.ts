@@ -166,11 +166,14 @@ export interface AIEngineConfig {
 }
 
 export interface RoutingConfig {
-  /** 'single' (default) sends every tool definition to the LLM each request — simple and reliable for
-   *  small catalogs. 'two-stage' routes the request through a lightweight index first and only sends
-   *  the full definitions for the candidates the index picked — useful when tools.yaml grows past
-   *  ~30 entries and the per-request token cost starts hurting. */
-  strategy?: 'single' | 'two-stage'
+  /** 'single' sends every tool definition to the LLM each request — simple and reliable for small
+   *  catalogs. 'two-stage' routes the request through a lightweight index first and only sends the
+   *  full definitions for the candidates the index picked — useful when tools.yaml grows past
+   *  ~30 entries and the per-request token cost starts hurting. 'auto' (default) picks 'single'
+   *  for catalogs below `twoStageThreshold` and 'two-stage' at or above. */
+  strategy?: 'auto' | 'single' | 'two-stage'
+  /** Tool-count threshold at which 'auto' switches from 'single' to 'two-stage'. Default 30. */
+  twoStageThreshold?: number
 }
 
 export interface HotReloadConfig {

@@ -7,6 +7,11 @@ All notable changes to `@aiglue/core` are documented here. The format follows [K
 ### Added
 
 - **`aiglue init --swagger <path-or-url>`** generates `tools.yaml` from an OpenAPI 3.x document (file or http(s) URL, JSON or YAML auto-detected). Heuristics: `risk_level` from HTTP method (GET → read, POST/PUT/PATCH → write, DELETE → critical); `response_type: table` when the success response is an array; path templates `{id}` rewritten to `:id`; `requestBody` JSON properties flattened to top-level params; `$ref` resolved against `#/components/{parameters,schemas,requestBodies,responses}`; deprecated operations skipped; header / cookie params skipped (auth lives via `authToken`); duplicate `operationId`s suffixed `_2`, `_3`, …; `examples` and `confirm_message` left empty by design — the operator fills the human-friendly bits before shipping. Swagger 2.0 input is rejected with a clear error.
+- **`routing.strategy: 'auto'`** picks the routing mode automatically: `'single'` below `routing.twoStageThreshold` (default 30), `'two-stage'` at or above. Now the default — small catalogs keep the existing 1-call latency, larger catalogs get token savings without a config change. Override with explicit `'single'` or `'two-stage'` if you want to pin behavior; the explicit values still work exactly as before.
+
+### Changed
+
+- `routing.strategy` default flipped from `'single'` to `'auto'`. Functionally a no-op for any deployment under 30 tools (which is the previous default sweet spot); deployments with 30+ tools start paying the two-stage latency in exchange for ~70% input-token savings. Pin `strategy: 'single'` to opt out.
 
 ## [0.2.0] — 2026-04-28
 

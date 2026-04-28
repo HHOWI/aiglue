@@ -19,10 +19,10 @@ function makeProvider(impl: Partial<LLMProvider>): LLMProvider {
 }
 
 describe('Router — single strategy', () => {
-  it('returns the full tool list and never calls the LLM in single mode (default)', async () => {
+  it('returns the full tool list and never calls the LLM in explicit single mode', async () => {
     const registry = ToolRegistry.fromFile(fixturePath)
     const provider = makeProvider({})
-    const router = new Router(provider, registry)
+    const router = new Router(provider, registry, { strategy: 'single' })
 
     const result = await router.decide('show users', [])
 
@@ -30,6 +30,59 @@ describe('Router — single strategy', () => {
     expect(result.tokensIn).toBe(0)
     expect(result.tokensOut).toBe(0)
     expect(result.fellBack).toBe(false)
+    expect(provider.resolve).not.toHaveBeenCalled()
+  })
+})
+
+describe('Router — auto strategy (default)', () => {
+  it('uses single-stage for catalogs below the threshold', async () => {
+    const registry = ToolRegistry.fromFile(fixturePath) // sample fixture has 3 tools
+    const provider = makeProvider({})
+    const router = new Router(provider, registry, { strategy: 'auto', twoStageThreshold: 30 })
+
+    const result = await router.decide('hi', [])
+
+    expect(result.tools).toHaveLength(registry.getAllTools().length)
+    expect(provider.resolve).not.toHaveBeenCalled()
+  })
+
+  it('uses two-stage at or above the threshold', async () => {
+    // Build a registry with exactly threshold tools so the >= boundary fires.
+    const fakeTools = Array.from({ length: 4 }, (_, i) => ({
+      name: `tool_${i}`,
+      description: `tool ${i}`,
+      endpoint: `GET /api/${i}`,
+    }))
+    const registry = ToolRegistry.fromConfig({
+      tools_yaml_version: '1.0',
+      tools: fakeTools,
+    })
+    const resolveMock = vi.fn().mockResolvedValue({
+      toolCall: { toolName: 'select_tools', params: { names: ['tool_1'] } },
+      textContent: null,
+      tokensIn: 20,
+      tokensOut: 5,
+    })
+    const router = new Router(makeProvider({ resolve: resolveMock }), registry, {
+      strategy: 'auto',
+      twoStageThreshold: 4,
+    })
+
+    const result = await router.decide('do tool 1', [])
+
+    expect(resolveMock).toHaveBeenCalled()
+    expect(result.tools.map((t) => t.name)).toEqual(['tool_1'])
+    expect(result.tokensIn).toBe(20)
+  })
+
+  it('uses the default threshold of 30 when none is supplied', async () => {
+    // 3-tool fixture should resolve to single under the default 30 threshold.
+    const registry = ToolRegistry.fromFile(fixturePath)
+    const provider = makeProvider({})
+    const router = new Router(provider, registry) // no config — full defaults
+
+    const result = await router.decide('anything', [])
+    expect(result.tools).toHaveLength(registry.getAllTools().length)
     expect(provider.resolve).not.toHaveBeenCalled()
   })
 })

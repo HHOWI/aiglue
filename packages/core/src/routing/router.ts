@@ -41,20 +41,25 @@ export interface RouteResult {
   fellBack: boolean
 }
 
+const DEFAULT_TWO_STAGE_THRESHOLD = 30
+
 export class Router {
   private provider: LLMProvider
   private registry: ToolRegistry
-  private strategy: 'single' | 'two-stage'
+  private strategy: 'auto' | 'single' | 'two-stage'
+  private twoStageThreshold: number
 
   constructor(provider: LLMProvider, registry: ToolRegistry, config?: RoutingConfig) {
     this.provider = provider
     this.registry = registry
-    this.strategy = config?.strategy ?? 'single'
+    this.strategy = config?.strategy ?? 'auto'
+    this.twoStageThreshold = config?.twoStageThreshold ?? DEFAULT_TWO_STAGE_THRESHOLD
   }
 
   /** Returns the tool subset that the main IntentResolver should see, plus the stage-1 cost. */
   async decide(userInput: string, history: ChatMessage[]): Promise<RouteResult> {
-    if (this.strategy === 'single') {
+    const effective = this.resolveStrategy()
+    if (effective === 'single') {
       return { tools: this.registry.toLLMTools(), tokensIn: 0, tokensOut: 0, fellBack: false }
     }
 
@@ -98,5 +103,15 @@ export class Router {
       // Stage-1 LLM failure (timeout / rate-limit / 5xx) → degrade to single-stage rather than fail the request.
       return { tools: this.registry.toLLMTools(), tokensIn: 0, tokensOut: 0, fellBack: true }
     }
+  }
+
+  /** Resolves 'auto' to a concrete decision based on the current tool count. */
+  private resolveStrategy(): 'single' | 'two-stage' {
+    if (this.strategy === 'auto') {
+      return this.registry.getAllTools().length >= this.twoStageThreshold
+        ? 'two-stage'
+        : 'single'
+    }
+    return this.strategy
   }
 }

@@ -20,7 +20,7 @@ const ALLOWED: Record<string, readonly string[]> = {
   ],
   executor: ['timeoutMs', 'maxResponseBytes'],
   hotReload: ['pollIntervalMs'],
-  routing: ['strategy'],
+  routing: ['strategy', 'twoStageThreshold'],
 }
 
 function checkKeys(obj: Record<string, unknown>, group: keyof typeof ALLOWED, path: string): void {
