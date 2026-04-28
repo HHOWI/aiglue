@@ -8,7 +8,11 @@
   "bin": {
     "aiglue": "dist/cli/index.js"
   },
-  "files": ["dist", "schema", "assets"],
+  "files": [
+    "dist",
+    "schema",
+    "assets"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,6 +29,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
     "openai": "^4.77.0",

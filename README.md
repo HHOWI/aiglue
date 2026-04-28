@@ -331,12 +331,54 @@ aiglue returns structured JSON. You render it however you want:
 | `confirm` | Needs user approval |
 | `clarify` | Needs more info from user |
 
-### MCP Server Generation
+### MCP Server (Claude Desktop, Cursor, Cline, …)
 
-Turn your `tools.yaml` into a standalone MCP Server for Claude Desktop, OpenClaw, etc:
+The same `tools.yaml` that powers your in-app chatbot can also be exposed as an [MCP](https://modelcontextprotocol.io) server. Any MCP-compatible host (Claude Desktop, Cursor, Cline, etc.) can then call your APIs natively — no chat UI to build.
 
 ```bash
-npx aiglue generate-mcp --tools ./tools.yaml --output ./mcp-server/
+AIGLUE_AUTH_TOKEN=your-token \
+  npx aiglue mcp serve \
+    --tools ./tools.yaml \
+    --base-url https://api.your-service.com
+```
+
+Wire it into Claude Desktop's `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "company-admin": {
+      "command": "npx",
+      "args": [
+        "aiglue", "mcp", "serve",
+        "--tools", "/abs/path/to/tools.yaml",
+        "--base-url", "https://internal-api.company.com"
+      ],
+      "env": { "AIGLUE_AUTH_TOKEN": "your-bearer-token" }
+    }
+  }
+}
+```
+
+What you get:
+- **Internal tooling at zero UI cost.** PMs / CS / QA query and mutate your APIs from Claude Desktop without going through admin pages.
+- **Composability.** Your tools mix freely with filesystem, GitHub, Playwright, and other MCP servers in the same conversation.
+- **Power-user channel.** Technical customers who prefer their own AI client can connect to your MCP endpoint instead of using your built-in chat.
+
+Risk-level safety: tools with `risk_level: write` are prefixed with `[WRITE OPERATION]` in their MCP description, and `critical` tools with `[CRITICAL OPERATION — IRREVERSIBLE]`. The host (e.g., Claude Desktop) surfaces its own confirm UI before invoking them.
+
+Programmatic API for embedding in your own MCP host:
+
+```ts
+import { createMCPServer } from '@aiglue/core'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+
+const server = createMCPServer({
+  toolsPath: './tools.yaml',
+  baseUrl: 'https://api.your-service.com',
+  authToken: process.env.AIGLUE_AUTH_TOKEN,
+})
+await server.connect(new StdioServerTransport())
 ```
 
 ## Examples by backend framework
@@ -518,9 +560,10 @@ aiglue runs as a sidecar process alongside your existing backend:
 - [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` skeleton)
 - [x] OpenAI-compatible provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM, etc.)
 - [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, hot reload, Anthropic prompt caching)
+- [x] `aiglue mcp serve` — expose tools.yaml as an MCP server over stdio (Claude Desktop, Cursor, Cline, …)
 - [ ] `@aiglue/client` (React/Vue hooks)
-- [ ] `@aiglue/mcp` (MCP Server)
-- [ ] `npx aiglue generate-mcp`
+- [ ] SSE / Streamable HTTP transport for the MCP server
+- [ ] `npx aiglue generate-mcp` — emit a standalone MCP server config bundle for distribution
 - [ ] `npx aiglue init --swagger` (generate tools.yaml from OpenAPI spec)
 
 ## License

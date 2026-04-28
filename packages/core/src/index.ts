@@ -25,3 +25,6 @@ export type {
 
 export { lintFile } from './validate/lint.js'
 export type { LintError, LintResult } from './validate/types.js'
+
+export { createMCPServer } from './mcp/server.js'
+export type { MCPServerConfig } from './mcp/server.js'

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { runLint } from './lint.js'
 import { runInit } from './init.js'
+import { runMCP } from './mcp.js'
 
 async function main(): Promise<void> {
   const [, , subcommand, ...rest] = process.argv
@@ -15,7 +16,8 @@ async function main(): Promise<void> {
       '\n' +
       'subcommands:\n' +
       '  lint <file>   Validate tools.yaml against schema and semantic rules\n' +
-      '  init          Install IDE AI assets and a tools.yaml skeleton\n',
+      '  init          Install IDE AI assets and a tools.yaml skeleton\n' +
+      '  mcp serve     Expose tools.yaml as an MCP server over stdio\n',
     )
     process.exit(0)
   }
@@ -27,6 +29,9 @@ async function main(): Promise<void> {
       break
     case 'init':
       code = await runInit(rest, io)
+      break
+    case 'mcp':
+      code = await runMCP(rest, io)
       break
     default:
       io.stderr(`unknown subcommand: ${subcommand}\n`)

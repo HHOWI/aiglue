@@ -329,12 +329,54 @@ aiglue는 구조화된 JSON을 반환합니다. 렌더링은 개발자가 자유
 | `confirm` | 사용자 승인 필요 |
 | `clarify` | 추가 정보 필요 |
 
-### MCP Server 생성
+### MCP Server (Claude Desktop · Cursor · Cline …)
 
-`tools.yaml`을 Claude Desktop, 오픈클루 등에서 사용할 수 있는 독립 MCP Server로 변환:
+서비스 내부 챗봇에 쓰던 같은 `tools.yaml`을 [MCP](https://modelcontextprotocol.io) 서버로도 노출할 수 있습니다. Claude Desktop·Cursor·Cline 같은 MCP 호환 호스트가 우리 API를 네이티브 tool로 호출 — **챗 UI를 만들 필요가 없습니다**.
 
 ```bash
-npx aiglue generate-mcp --tools ./tools.yaml --output ./mcp-server/
+AIGLUE_AUTH_TOKEN=your-token \
+  npx aiglue mcp serve \
+    --tools ./tools.yaml \
+    --base-url https://api.your-service.com
+```
+
+Claude Desktop의 `claude_desktop_config.json`에 등록:
+
+```json
+{
+  "mcpServers": {
+    "company-admin": {
+      "command": "npx",
+      "args": [
+        "aiglue", "mcp", "serve",
+        "--tools", "/abs/path/to/tools.yaml",
+        "--base-url", "https://internal-api.company.com"
+      ],
+      "env": { "AIGLUE_AUTH_TOKEN": "your-bearer-token" }
+    }
+  }
+}
+```
+
+활용 시나리오:
+- **사내 도구 무료 챗 UI**: PM·CS·QA가 admin 페이지를 거치지 않고 Claude Desktop에서 자연어로 데이터 조회·변경
+- **워크플로우 조합**: filesystem·GitHub·Playwright 등 다른 MCP 서버와 같은 대화 안에서 자연스럽게 결합
+- **파워 유저 통로**: 우리 챗봇 안 쓰는 기술 고객이 자기 AI 클라이언트로 우리 API 활용
+
+risk_level 안전장치: `risk_level: write` 도구는 description에 `[WRITE OPERATION]` 프리픽스, `critical` 은 `[CRITICAL OPERATION — IRREVERSIBLE]` 프리픽스가 자동 추가됩니다. Claude Desktop 같은 호스트가 자체 confirm UI를 띄우고 호출.
+
+자체 MCP 호스트 임베딩용 프로그래매틱 API:
+
+```ts
+import { createMCPServer } from '@aiglue/core'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+
+const server = createMCPServer({
+  toolsPath: './tools.yaml',
+  baseUrl: 'https://api.your-service.com',
+  authToken: process.env.AIGLUE_AUTH_TOKEN,
+})
+await server.connect(new StdioServerTransport())
 ```
 
 ## 백엔드 프레임워크별 예시
@@ -516,9 +558,10 @@ aiglue를 기존 백엔드 옆에 사이드카 프로세스로 실행합니다:
 - [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` 스켈레톤)
 - [x] OpenAI 호환 Provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM 등)
 - [x] 운영 강화 (LLM·HTTP 타임아웃, 응답 크기 cap, history 토큰 예산, confirm 멱등성, hot reload, Anthropic prompt caching)
+- [x] `aiglue mcp serve` — `tools.yaml`을 stdio 기반 MCP 서버로 노출 (Claude Desktop · Cursor · Cline …)
 - [ ] `@aiglue/client` (React/Vue hooks)
-- [ ] `@aiglue/mcp` (MCP Server)
-- [ ] `npx aiglue generate-mcp`
+- [ ] MCP SSE / Streamable HTTP transport
+- [ ] `npx aiglue generate-mcp` — 배포용 독립 MCP 서버 config 번들 생성
 - [ ] `npx aiglue init --swagger` (OpenAPI 스펙에서 tools.yaml 생성)
 
 ## 라이선스
