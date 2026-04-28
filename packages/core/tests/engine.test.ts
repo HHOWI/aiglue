@@ -821,6 +821,105 @@ describe('createAIEngine — confirmAndExecute idempotency', () => {
     await new Promise<void>((r) => writeServer.close(() => r()))
   })
 
+  it('does NOT cache transient 5xx — same key allows a retry once upstream recovers', async () => {
+    let callCount = 0
+    let respond5xx = true
+    const flakyServer = createServer((req, res) => {
+      if (req.url?.startsWith('/api/users/') && req.method === 'PUT') {
+        callCount++
+        let body = ''
+        req.on('data', (c) => { body += c })
+        req.on('end', () => {
+          if (respond5xx) {
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'temp' }))
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ ok: true }))
+          }
+        })
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    const flakyPort = await new Promise<number>((r) => {
+      flakyServer.listen(0, () => {
+        const addr = flakyServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${flakyPort}`,
+    })
+
+    const key = 'flaky-key'
+    const r1 = await engine.confirmAndExecute(
+      'update_user',
+      { id: '1', name: 'X' },
+      { idempotencyKey: key },
+    )
+    expect(r1.type).toBe('error')
+    if (r1.type === 'error') expect(r1.code).toBe('UPSTREAM_5XX')
+
+    // Upstream recovers — retry with the SAME key must execute again, not return cached 5xx.
+    respond5xx = false
+    const r2 = await engine.confirmAndExecute(
+      'update_user',
+      { id: '1', name: 'X' },
+      { idempotencyKey: key },
+    )
+    expect(r2.type).toBe('action')
+    expect(callCount).toBe(2)
+
+    await new Promise<void>((r) => flakyServer.close(() => r()))
+  })
+
+  it('caches deterministic 4xx — same key returns cached error without re-executing', async () => {
+    let callCount = 0
+    const fourXxServer = createServer((req, res) => {
+      if (req.url?.startsWith('/api/users/') && req.method === 'PUT') {
+        callCount++
+        let body = ''
+        req.on('data', (c) => { body += c })
+        req.on('end', () => {
+          res.writeHead(404, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'not found' }))
+        })
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
+    })
+    const port = await new Promise<number>((r) => {
+      fourXxServer.listen(0, () => {
+        const addr = fourXxServer.address()
+        r(typeof addr === 'object' && addr ? addr.port : 0)
+      })
+    })
+
+    const engine = createAIEngine({
+      tools: fixturePath,
+      llm: { provider: 'claude', apiKey: 'test-key' },
+      baseUrl: `http://localhost:${port}`,
+    })
+
+    const key = '4xx-key'
+    const r1 = await engine.confirmAndExecute('update_user', { id: '1', name: 'X' }, { idempotencyKey: key })
+    expect(r1.type).toBe('error')
+    if (r1.type === 'error') expect(r1.code).toBe('UPSTREAM_4XX')
+
+    // Same key — must return cached 4xx without a second upstream hit.
+    const r2 = await engine.confirmAndExecute('update_user', { id: '1', name: 'X' }, { idempotencyKey: key })
+    expect(r2).toEqual(r1)
+    expect(callCount).toBe(1)
+
+    await new Promise<void>((r) => fourXxServer.close(() => r()))
+  })
+
   it('does not dedupe when no idempotencyKey is supplied', async () => {
     let callCount = 0
     const writeServer = createServer((req, res) => {

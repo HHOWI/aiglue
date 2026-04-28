@@ -309,7 +309,9 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           error: internalDetail,
         })
         const errResponse = formatter.formatError(messages.upstreamError, errorCode)
-        if (options?.idempotencyKey) {
+        // Cache deterministic 4xx so the client cannot accidentally re-execute, but skip transient 5xx
+        // so a fresh retry with the same idempotencyKey can succeed once the upstream recovers.
+        if (options?.idempotencyKey && executionResult.status < 500) {
           idempotency.record(options.idempotencyKey, errResponse)
         }
         return errResponse
