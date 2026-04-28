@@ -17,6 +17,9 @@ dist/
 *.swo
 *~
 
+# Claude Code local settings (per-developer permission toggles)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
