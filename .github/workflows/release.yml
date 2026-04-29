@@ -18,7 +18,7 @@ jobs:
     permissions:
       # Required for npm provenance — links the published tarball back to this workflow run.
       id-token: write
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
