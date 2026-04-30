@@ -1,6 +1,6 @@
 {
   "name": "@hhowi/aiglue-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "YAML config turns any REST API into an AI-powered natural language interface",
   "type": "module",
   "main": "dist/index.js",
@@ -10,7 +10,6 @@
   },
   "files": [
     "dist",
-    "schema",
     "assets"
   ],
   "exports": {
@@ -18,8 +17,7 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/cjs/index.js"
-    },
-    "./schema": "./schema/tools.schema.json"
+    }
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.cjs.json && node scripts/post-build-cjs.cjs",
@@ -30,10 +28,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "ajv": "^8.18.0",
-    "ajv-formats": "^3.0.1",
     "openai": "^4.77.0",
-    "yaml": "^2.7.0"
+    "zod-to-json-schema": "^3.22.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -41,7 +37,8 @@
     "vitest": "^3.1.0"
   },
   "peerDependencies": {
-    "express": "^4.0.0 || ^5.0.0"
+    "express": "^4.0.0 || ^5.0.0",
+    "zod": "^3.22.0"
   },
   "peerDependenciesMeta": {
     "express": {
