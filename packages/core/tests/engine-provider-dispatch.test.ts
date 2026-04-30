@@ -1,17 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import { createAIEngine } from '../src/engine.js'
+import { defineTool } from '../src/define-tool.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, 'fixtures/sample-tools.yaml')
+const sampleTools = [
+  defineTool({
+    name: 'get_users',
+    description: '사용자 목록을 조회한다',
+    endpoint: 'GET /api/users',
+    responseType: 'table',
+    riskLevel: 'read',
+    columns: [{ key: 'id', label: 'ID' }],
+  }),
+]
 
 describe('engine provider dispatch', () => {
   it('creates an engine when provider is openai-compatible', () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: {
         provider: 'openai-compatible',
         apiKey: 'test',
@@ -24,7 +29,7 @@ describe('engine provider dispatch', () => {
 
   it('creates an engine when provider is openai-compatible without apiKey', () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: {
         provider: 'openai-compatible',
         model: 'llama3.1',
@@ -37,7 +42,7 @@ describe('engine provider dispatch', () => {
   it('throws when openai-compatible provider is configured without a model', () => {
     expect(() =>
       createAIEngine({
-        tools: fixturePath,
+        tools: sampleTools,
         llm: {
           provider: 'openai-compatible',
           apiKey: 'test',
@@ -48,7 +53,7 @@ describe('engine provider dispatch', () => {
 
   it('still creates a Claude engine when provider is claude', () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
     })
     expect(engine).toBeDefined()

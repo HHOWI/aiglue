@@ -9,7 +9,7 @@ import type {
 
 export class ResponseFormatter {
   format(tool: ToolDefinition, apiResponse: unknown): AIEResponse {
-    const responseType = tool.response_type ?? 'text'
+    const responseType = tool.responseType ?? 'text'
 
     switch (responseType) {
       case 'table':
@@ -30,17 +30,17 @@ export class ResponseFormatter {
     let rows: Record<string, unknown>[] = []
     let total: number | undefined
 
-    if (tool.response_mapping?.data_path) {
-      const extracted = this.getNestedValue(apiResponse, tool.response_mapping.data_path)
+    if (tool.responseMapping?.dataPath) {
+      const extracted = this.getNestedValue(apiResponse, tool.responseMapping.dataPath)
       if (extracted === undefined || extracted === null) {
         return this.formatError(
-          `data_path "${tool.response_mapping.data_path}" not found in API response for tool "${tool.name}". Check response_mapping in tools.yaml.`,
+          `dataPath "${tool.responseMapping.dataPath}" not found in API response for tool "${tool.name}". Check responseMapping in tool definition.`,
           'DATA_PATH_NOT_FOUND',
         )
       }
       if (!Array.isArray(extracted)) {
         return this.formatError(
-          `data_path "${tool.response_mapping.data_path}" in tool "${tool.name}" resolved to ${typeof extracted}, expected array.`,
+          `dataPath "${tool.responseMapping.dataPath}" in tool "${tool.name}" resolved to ${typeof extracted}, expected array.`,
           'DATA_PATH_NOT_ARRAY',
         )
       }
@@ -49,8 +49,8 @@ export class ResponseFormatter {
       rows = apiResponse as Record<string, unknown>[]
     }
 
-    if (tool.response_mapping?.total_path) {
-      const rawTotal = this.getNestedValue(apiResponse, tool.response_mapping.total_path)
+    if (tool.responseMapping?.totalPath) {
+      const rawTotal = this.getNestedValue(apiResponse, tool.responseMapping.totalPath)
       if (rawTotal != null) {
         const n = Number(rawTotal)
         total = Number.isFinite(n) ? n : undefined
@@ -98,7 +98,7 @@ export class ResponseFormatter {
   ): AIEResponse {
     return {
       type: 'confirm',
-      message: message ?? tool.confirm_message ?? `Confirm "${tool.name}"?`,
+      message: message ?? tool.confirmMessage ?? `Confirm "${tool.name}"?`,
       toolName: tool.name,
       params,
       ...(confirmToken ? { confirmToken } : {}),

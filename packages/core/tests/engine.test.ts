@@ -1,13 +1,46 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import { createAIEngine } from '../src/engine.js'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
+import { defineTool } from '../src/define-tool.js'
+import { z } from 'zod'
 import { createServer, type Server } from 'http'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, 'fixtures/sample-tools.yaml')
+// ── shared tool fixtures (replaces sample-tools.yaml) ──────────────────────
+
+const getUsersTool = defineTool({
+  name: 'get_users',
+  description: '사용자 목록을 조회한다',
+  endpoint: 'GET /api/users',
+  responseType: 'table',
+  riskLevel: 'read',
+  columns: [
+    { key: 'id', label: 'ID' },
+    { key: 'name', label: '이름' },
+    { key: 'role', label: '역할', type: 'badge' },
+  ],
+  examples: ['사용자 목록 보여줘', '관리자 목록'],
+})
+
+const updateUserTool = defineTool({
+  name: 'update_user',
+  description: '사용자 정보를 수정한다',
+  endpoint: 'PUT /api/users/:id',
+  params: z.object({ id: z.string(), name: z.string().optional() }),
+  riskLevel: 'write',
+  confirmMessage: '사용자 정보를 수정합니다. 진행할까요?',
+})
+
+const deleteUserTool = defineTool({
+  name: 'delete_user',
+  description: '사용자를 삭제한다',
+  endpoint: 'DELETE /api/users/:id',
+  params: z.object({ id: z.string() }),
+  riskLevel: 'critical',
+  confirmMessage: '사용자를 삭제합니다. 이 작업은 되돌릴 수 없습니다.',
+})
+
+const sampleTools = [getUsersTool, updateUserTool, deleteUserTool]
+
+// ── shared mock API server ──────────────────────────────────────────────────
 
 let mockApiServer: Server
 let apiPort: number
@@ -35,12 +68,14 @@ beforeAll(async () => {
 
 afterAll(() => mockApiServer.close())
 
+// ── zero-config defaults ────────────────────────────────────────────────────
+
 describe('createAIEngine — zero-config defaults', () => {
   it('llm is optional — defaults to claude provider with env-driven auth', () => {
     // No throw expected. The Anthropic SDK only reads ANTHROPIC_API_KEY when an actual API call fires,
     // so construction with no env var still succeeds.
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       baseUrl: `http://localhost:${apiPort}`,
     })
     expect(engine).toBeDefined()
@@ -49,10 +84,12 @@ describe('createAIEngine — zero-config defaults', () => {
   })
 })
 
+// ── core engine behaviour ───────────────────────────────────────────────────
+
 describe('createAIEngine', () => {
   it('should create an engine instance', () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
@@ -63,18 +100,19 @@ describe('createAIEngine', () => {
 
   it('should process a message with mocked LLM and return table', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
+        toolCalls: [{ toolName: 'get_users', params: {} }],
         textContent: null,
         tokensIn: 500,
         tokensOut: 50,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('사용자 보여줘')
@@ -83,18 +121,19 @@ describe('createAIEngine', () => {
 
   it('should return text when LLM returns no tool call', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: null,
+        toolCalls: [],
         textContent: '무엇을 도와드릴까요?',
         tokensIn: 100,
         tokensOut: 20,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('안녕')
@@ -106,18 +145,19 @@ describe('createAIEngine', () => {
 
   it('should return error when tool is not in whitelist', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'hack_system', params: {} },
+        toolCalls: [{ toolName: 'hack_system', params: {} }],
         textContent: null,
         tokensIn: 100,
         tokensOut: 20,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('해킹해줘')
@@ -126,18 +166,19 @@ describe('createAIEngine', () => {
 
   it('should return confirm for write tools', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'update_user', params: { id: '1', name: 'Updated' } },
+        toolCalls: [{ toolName: 'update_user', params: { id: '1', name: 'Updated' } }],
         textContent: null,
         tokensIn: 100,
         tokensOut: 20,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('사용자 수정해줘')
@@ -146,13 +187,14 @@ describe('createAIEngine', () => {
 
   it('should return error on LLM failure', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockRejectedValue(new Error('LLM timeout')),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('뭐든')
@@ -161,13 +203,14 @@ describe('createAIEngine', () => {
 
   it('should not leak raw err.message in INTERNAL_ERROR responses', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
     const secret = 'connect ECONNREFUSED 10.0.0.42:5432 db=prod-creds'
     engine._setProvider({
       resolve: vi.fn().mockRejectedValue(new Error(secret)),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('뭐든')
@@ -180,8 +223,6 @@ describe('createAIEngine', () => {
   })
 
   it('should not leak upstream status detail in user-facing message', async () => {
-    // Use a server port nothing listens on → executor will fail to connect
-    // Instead, set up a server that returns 500 for the GET /api/users path
     const errServer: Server = createServer((_req, res) => {
       res.writeHead(503, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: 'pg connection pool exhausted' }))
@@ -194,17 +235,18 @@ describe('createAIEngine', () => {
     })
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${errPort}`,
     })
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
+        toolCalls: [{ toolName: 'get_users', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 5,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('사용자 보여줘')
@@ -220,21 +262,23 @@ describe('createAIEngine', () => {
   })
 })
 
+// ── history passthrough ─────────────────────────────────────────────────────
+
 describe('createAIEngine — history passthrough', () => {
   it('relays client-provided history to the resolver', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     const mockResolve = vi.fn().mockResolvedValue({
-      toolCall: null,
+      toolCalls: [],
       textContent: 'ok',
       tokensIn: 0,
       tokensOut: 0,
     })
-    engine._setProvider({ resolve: mockResolve })
+    engine._setProvider({ resolve: mockResolve, chat: vi.fn() })
 
     await engine.processMessage('follow-up', {
       history: [
@@ -252,14 +296,14 @@ describe('createAIEngine — history passthrough', () => {
 
   it('trims history to maxMessages (default 10)', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
     const mockResolve = vi.fn().mockResolvedValue({
-      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+      toolCalls: [], textContent: 'ok', tokensIn: 0, tokensOut: 0,
     })
-    engine._setProvider({ resolve: mockResolve })
+    engine._setProvider({ resolve: mockResolve, chat: vi.fn() })
 
     const longHistory = Array.from({ length: 14 }, (_, i) => ({
       role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -277,15 +321,15 @@ describe('createAIEngine — history passthrough', () => {
 
   it('drops oldest messages first when maxTokens budget is exceeded', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
       history: { maxMessages: 100, maxTokens: 50 },
     })
     const mockResolve = vi.fn().mockResolvedValue({
-      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+      toolCalls: [], textContent: 'ok', tokensIn: 0, tokensOut: 0,
     })
-    engine._setProvider({ resolve: mockResolve })
+    engine._setProvider({ resolve: mockResolve, chat: vi.fn() })
 
     // 4 messages × 100 chars ≈ 25 tokens each → budget 50 fits ~2 most recent
     const heavy = (label: string) => ({
@@ -311,15 +355,15 @@ describe('createAIEngine — history passthrough', () => {
 
   it('keeps the most recent message even when it alone exceeds maxTokens', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
       history: { maxMessages: 100, maxTokens: 5 },
     })
     const mockResolve = vi.fn().mockResolvedValue({
-      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+      toolCalls: [], textContent: 'ok', tokensIn: 0, tokensOut: 0,
     })
-    engine._setProvider({ resolve: mockResolve })
+    engine._setProvider({ resolve: mockResolve, chat: vi.fn() })
 
     const huge = 'z'.repeat(400) // ~100 tokens, far over the 5-token budget
     await engine.processMessage('new', {
@@ -333,15 +377,15 @@ describe('createAIEngine — history passthrough', () => {
 
   it('honors custom maxMessages from engine config', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
       history: { maxMessages: 2 },
     })
     const mockResolve = vi.fn().mockResolvedValue({
-      toolCall: null, textContent: 'ok', tokensIn: 0, tokensOut: 0,
+      toolCalls: [], textContent: 'ok', tokensIn: 0, tokensOut: 0,
     })
-    engine._setProvider({ resolve: mockResolve })
+    engine._setProvider({ resolve: mockResolve, chat: vi.fn() })
 
     await engine.processMessage('new', {
       history: [
@@ -361,28 +405,31 @@ describe('createAIEngine — history passthrough', () => {
 
   it('works without history (backward compatible)', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: null, textContent: 'hi', tokensIn: 0, tokensOut: 0,
+        toolCalls: [], textContent: 'hi', tokensIn: 0, tokensOut: 0,
       }),
+      chat: vi.fn(),
     })
     const result = await engine.processMessage('hi')
     expect(result.type).toBe('text')
   })
 })
 
+// ── empty message + i18n ────────────────────────────────────────────────────
+
 describe('createAIEngine — empty message + i18n', () => {
   it('should return error when message is empty string', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
-    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() } as never)
+    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() })
 
     const req = { body: { message: '' } }
     let captured: unknown
@@ -395,11 +442,11 @@ describe('createAIEngine — empty message + i18n', () => {
 
   it('should return error when message is whitespace only', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
-    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() } as never)
+    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() })
 
     const req = { body: { message: '   ' } }
     let captured: unknown
@@ -425,20 +472,20 @@ describe('createAIEngine — empty message + i18n', () => {
     })
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${authCheckPort}`,
       auth: { type: 'bearer', token: () => undefined },
     })
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
+        toolCalls: [{ toolName: 'get_users', params: {} }],
         textContent: null,
         tokensIn: 0,
         tokensOut: 0,
       }),
       chat: vi.fn(),
-    } as never)
+    })
 
     await engine.processMessage('show users')
     authCheckServer.close()
@@ -448,14 +495,14 @@ describe('createAIEngine — empty message + i18n', () => {
 
   it('should use custom messages from config', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
       messages: {
         emptyMessageError: 'Custom: message required',
       },
     })
-    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() } as never)
+    engine._setProvider({ resolve: vi.fn(), chat: vi.fn() })
 
     const req = { body: { message: '' } }
     let captured: unknown
@@ -465,6 +512,8 @@ describe('createAIEngine — empty message + i18n', () => {
     expect((captured as { message: string }).message).toBe('Custom: message required')
   })
 })
+
+// ── config.auth.token ───────────────────────────────────────────────────────
 
 describe('createAIEngine — config.auth.token', () => {
   it('passes token from auth.token function to downstream API', async () => {
@@ -489,7 +538,7 @@ describe('createAIEngine — config.auth.token', () => {
     )
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${authPort}`,
       auth: {
@@ -500,11 +549,12 @@ describe('createAIEngine — config.auth.token', () => {
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
+        toolCalls: [{ toolName: 'get_users', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 10,
       }),
+      chat: vi.fn(),
     })
 
     const handlerFn = engine.handler()
@@ -543,7 +593,7 @@ describe('createAIEngine — config.auth.token', () => {
     )
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${authPort2}`,
       auth: {
@@ -554,11 +604,12 @@ describe('createAIEngine — config.auth.token', () => {
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
+        toolCalls: [{ toolName: 'get_users', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 10,
       }),
+      chat: vi.fn(),
     })
 
     const handlerFn = engine.handler()
@@ -576,7 +627,7 @@ describe('createAIEngine — config.auth.token', () => {
 
   it('returns error response when auth.token function throws', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       auth: {
         type: 'bearer',
@@ -584,7 +635,8 @@ describe('createAIEngine — config.auth.token', () => {
       },
     })
     engine._setProvider({
-      resolve: vi.fn().mockResolvedValue({ type: 'text', text: 'hello' }),
+      resolve: vi.fn().mockResolvedValue({ toolCalls: [], textContent: 'hello', tokensIn: 0, tokensOut: 0 }),
+      chat: vi.fn(),
     })
 
     const mockReq = {
@@ -608,239 +660,13 @@ describe('createAIEngine — config.auth.token', () => {
   })
 })
 
-describe('createAIEngine — hot reload', () => {
-  it('engine.reload() picks up new tools without restart', async () => {
-    const { writeFileSync, mkdtempSync, rmSync } = await import('fs')
-    const { tmpdir } = await import('os')
-    const dir = mkdtempSync(resolve(tmpdir(), 'aiglue-eng-reload-'))
-    const path = resolve(dir, 'tools.yaml')
-    writeFileSync(path, `tools_yaml_version: "1.0"
-tools:
-  - name: get_users
-    description: list users
-    endpoint: GET /api/users
-    response_type: text
-    risk_level: read
-`)
-
-    const engine = createAIEngine({
-      tools: path,
-      llm: { provider: 'claude', apiKey: 'k' },
-      baseUrl: `http://localhost:${apiPort}`,
-    })
-
-    // Before reload: only get_users known. Try to call a yet-unregistered tool.
-    engine._setProvider({
-      resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_orders', params: {} },
-        textContent: null,
-        tokensIn: 0,
-        tokensOut: 0,
-      }),
-    })
-    const before = await engine.processMessage('orders')
-    expect(before.type).toBe('error') // tool not in registry → safety reject
-
-    // Add get_orders to the file and reload.
-    writeFileSync(path, `tools_yaml_version: "1.0"
-tools:
-  - name: get_users
-    description: list users
-    endpoint: GET /api/users
-    response_type: text
-    risk_level: read
-  - name: get_orders
-    description: list orders
-    endpoint: GET /api/users
-    response_type: text
-    risk_level: read
-`)
-    const result = await engine.reload()
-    expect(result.ok).toBe(true)
-
-    const after = await engine.processMessage('orders')
-    expect(after.type).not.toBe('error')
-
-    engine.dispose()
-    rmSync(dir, { recursive: true, force: true })
-  })
-
-  it('engine.reload() returns { ok: false } and keeps existing tools on parse failure', async () => {
-    const { writeFileSync, mkdtempSync, rmSync } = await import('fs')
-    const { tmpdir } = await import('os')
-    const dir = mkdtempSync(resolve(tmpdir(), 'aiglue-eng-reload-bad-'))
-    const path = resolve(dir, 'tools.yaml')
-    writeFileSync(path, `tools_yaml_version: "1.0"
-tools:
-  - name: get_users
-    description: list users
-    endpoint: GET /api/users
-    response_type: text
-    risk_level: read
-`)
-    const engine = createAIEngine({
-      tools: path,
-      llm: { provider: 'claude', apiKey: 'k' },
-      baseUrl: `http://localhost:${apiPort}`,
-    })
-
-    // Corrupt the file
-    writeFileSync(path, `tools_yaml_version: "1.0"
-tools: not-an-array
-`)
-    const result = await engine.reload()
-    expect(result.ok).toBe(false)
-
-    // Existing tool still works
-    engine._setProvider({
-      resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
-        textContent: null,
-        tokensIn: 0,
-        tokensOut: 0,
-      }),
-    })
-    const r = await engine.processMessage('users')
-    expect(r.type).not.toBe('error')
-
-    engine.dispose()
-    rmSync(dir, { recursive: true, force: true })
-  })
-
-  it('polling auto-detects mtime changes and reloads', async () => {
-    const { writeFileSync, mkdtempSync, rmSync, utimesSync } = await import('fs')
-    const { tmpdir } = await import('os')
-    const dir = mkdtempSync(resolve(tmpdir(), 'aiglue-eng-poll-'))
-    const path = resolve(dir, 'tools.yaml')
-    writeFileSync(path, `tools_yaml_version: "1.0"
-tools:
-  - name: t1
-    description: one
-    endpoint: GET /api/users
-    response_type: text
-    risk_level: read
-`)
-
-    const engine = createAIEngine({
-      tools: path,
-      llm: { provider: 'claude', apiKey: 'k' },
-      baseUrl: `http://localhost:${apiPort}`,
-      hotReload: { pollIntervalMs: 50 },
-    })
-
-    // Rewrite + bump mtime explicitly (Windows mtime granularity can be coarse).
-    writeFileSync(path, `tools_yaml_version: "1.0"
-tools:
-  - name: t1
-    description: one
-    endpoint: GET /api/users
-    response_type: text
-    risk_level: read
-  - name: t2
-    description: two
-    endpoint: GET /api/users
-    response_type: text
-    risk_level: read
-`)
-    const future = new Date(Date.now() + 5000)
-    utimesSync(path, future, future)
-
-    // Wait for at least one poll tick + reload to flush
-    await new Promise((r) => setTimeout(r, 250))
-
-    engine._setProvider({
-      resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 't2', params: {} },
-        textContent: null,
-        tokensIn: 0,
-        tokensOut: 0,
-      }),
-    })
-    const r = await engine.processMessage('use t2')
-    expect(r.type).not.toBe('error')
-
-    engine.dispose()
-    rmSync(dir, { recursive: true, force: true })
-  })
-})
-
-describe('createAIEngine — clarify meta tool', () => {
-  it('returns AIEClarifyResponse when the LLM calls the clarify meta tool', async () => {
-    const engine = createAIEngine({
-      tools: fixturePath,
-      llm: { provider: 'claude', apiKey: 'k' },
-      baseUrl: `http://localhost:${apiPort}`,
-    })
-    engine._setProvider({
-      resolve: vi.fn().mockResolvedValue({
-        toolCall: {
-          toolName: '__aiglue_clarify__',
-          params: { question: '어떤 사용자를 보고 싶으신가요?', options: ['전체', '활성', '관리자만'] },
-        },
-        textContent: null,
-        tokensIn: 30,
-        tokensOut: 10,
-      }),
-    })
-
-    const result = await engine.processMessage('그거 보여줘')
-    expect(result.type).toBe('clarify')
-    if (result.type === 'clarify') {
-      expect(result.question).toBe('어떤 사용자를 보고 싶으신가요?')
-      expect(result.options).toEqual(['전체', '활성', '관리자만'])
-    }
-  })
-
-  it('omits options field when the LLM did not provide any', async () => {
-    const engine = createAIEngine({
-      tools: fixturePath,
-      llm: { provider: 'claude', apiKey: 'k' },
-      baseUrl: `http://localhost:${apiPort}`,
-    })
-    engine._setProvider({
-      resolve: vi.fn().mockResolvedValue({
-        toolCall: {
-          toolName: '__aiglue_clarify__',
-          params: { question: '날짜 범위를 알려주세요.' },
-        },
-        textContent: null,
-        tokensIn: 10,
-        tokensOut: 5,
-      }),
-    })
-
-    const result = await engine.processMessage('지난주 데이터')
-    expect(result.type).toBe('clarify')
-    if (result.type === 'clarify') {
-      expect(result.options).toBeUndefined()
-    }
-  })
-
-  it('clarify is intercepted before SafetyGate so the meta tool name never triggers TOOL_NOT_ALLOWED', async () => {
-    // The clarify meta tool is NOT in tools.yaml — if engine forgot to intercept, SafetyGate would reject it.
-    const engine = createAIEngine({
-      tools: fixturePath,
-      llm: { provider: 'claude', apiKey: 'k' },
-      baseUrl: `http://localhost:${apiPort}`,
-    })
-    engine._setProvider({
-      resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: '__aiglue_clarify__', params: { question: 'q?' } },
-        textContent: null,
-        tokensIn: 10,
-        tokensOut: 5,
-      }),
-    })
-    const result = await engine.processMessage('vague')
-    expect(result.type).not.toBe('error')
-  })
-})
+// ── disposeOnSignal ─────────────────────────────────────────────────────────
 
 describe('createAIEngine — disposeOnSignal', () => {
   it('registers and detaches SIGTERM/SIGINT handlers when enabled', async () => {
     const before = process.listenerCount('SIGTERM')
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
       disposeOnSignal: true,
@@ -854,7 +680,7 @@ describe('createAIEngine — disposeOnSignal', () => {
 
   it('dispose() is idempotent', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
       disposeOnSignal: true,
@@ -866,7 +692,7 @@ describe('createAIEngine — disposeOnSignal', () => {
   it('does not register signal handlers when disposeOnSignal is omitted', async () => {
     const before = process.listenerCount('SIGTERM')
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
     })
@@ -875,20 +701,23 @@ describe('createAIEngine — disposeOnSignal', () => {
   })
 })
 
+// ── confirmAndExecute idempotency ───────────────────────────────────────────
+
 describe('createAIEngine — confirmAndExecute idempotency', () => {
   it('issues a confirmToken on confirm responses', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${apiPort}`,
     })
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'update_user', params: { id: '1', name: 'X' } },
+        toolCalls: [{ toolName: 'update_user', params: { id: '1', name: 'X' } }],
         textContent: null,
         tokensIn: 0,
         tokensOut: 0,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('수정해줘')
@@ -923,7 +752,7 @@ describe('createAIEngine — confirmAndExecute idempotency', () => {
     })
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${writePort}`,
     })
@@ -976,7 +805,7 @@ describe('createAIEngine — confirmAndExecute idempotency', () => {
     })
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${flakyPort}`,
     })
@@ -1027,7 +856,7 @@ describe('createAIEngine — confirmAndExecute idempotency', () => {
     })
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${port}`,
     })
@@ -1069,7 +898,7 @@ describe('createAIEngine — confirmAndExecute idempotency', () => {
     })
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'test-key' },
       baseUrl: `http://localhost:${writePort}`,
     })
@@ -1080,5 +909,82 @@ describe('createAIEngine — confirmAndExecute idempotency', () => {
     expect(callCount).toBe(2)
 
     await new Promise<void>((r) => writeServer.close(() => r()))
+  })
+})
+
+// ── clarify meta tool ───────────────────────────────────────────────────────
+
+describe('createAIEngine — clarify meta tool', () => {
+  it('returns AIEClarifyResponse when the LLM calls the clarify meta tool', async () => {
+    const engine = createAIEngine({
+      tools: sampleTools,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCalls: [{
+          toolName: '__aiglue_clarify__',
+          params: { question: '어떤 사용자를 보고 싶으신가요?', options: ['전체', '활성', '관리자만'] },
+        }],
+        textContent: null,
+        tokensIn: 30,
+        tokensOut: 10,
+      }),
+      chat: vi.fn(),
+    })
+
+    const result = await engine.processMessage('그거 보여줘')
+    expect(result.type).toBe('clarify')
+    if (result.type === 'clarify') {
+      expect(result.question).toBe('어떤 사용자를 보고 싶으신가요?')
+      expect(result.options).toEqual(['전체', '활성', '관리자만'])
+    }
+  })
+
+  it('omits options field when the LLM did not provide any', async () => {
+    const engine = createAIEngine({
+      tools: sampleTools,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCalls: [{
+          toolName: '__aiglue_clarify__',
+          params: { question: '날짜 범위를 알려주세요.' },
+        }],
+        textContent: null,
+        tokensIn: 10,
+        tokensOut: 5,
+      }),
+      chat: vi.fn(),
+    })
+
+    const result = await engine.processMessage('지난주 데이터')
+    expect(result.type).toBe('clarify')
+    if (result.type === 'clarify') {
+      expect(result.options).toBeUndefined()
+    }
+  })
+
+  it('clarify is intercepted before SafetyGate so the meta tool name never triggers TOOL_NOT_ALLOWED', async () => {
+    // The clarify meta tool is NOT in tools — if engine forgot to intercept, SafetyGate would reject it.
+    const engine = createAIEngine({
+      tools: sampleTools,
+      llm: { provider: 'claude', apiKey: 'k' },
+      baseUrl: `http://localhost:${apiPort}`,
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCalls: [{ toolName: '__aiglue_clarify__', params: { question: 'q?' } }],
+        textContent: null,
+        tokensIn: 10,
+        tokensOut: 5,
+      }),
+      chat: vi.fn(),
+    })
+    const result = await engine.processMessage('vague')
+    expect(result.type).not.toBe('error')
   })
 })

@@ -30,10 +30,10 @@ export class Summarizer {
     apiResponse: unknown,
     base: AIEResponse,
   ): Promise<AIEResponse> {
-    const wantSummary = tool.response_type === 'summary'
+    const wantSummary = tool.responseType === 'summary'
     const wantInclude =
-      tool.response_type === 'table' &&
-      tool.include_summary === true &&
+      tool.responseType === 'table' &&
+      tool.includeSummary === true &&
       base.type === 'table'
 
     if (!wantSummary && !wantInclude) return base

@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import { createServer, type Server } from 'http'
 import { createAIEngine } from '../src/engine.js'
+import { defineTool } from '../src/define-tool.js'
 import type { LLMProvider } from '../src/providers/types.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, 'fixtures/sample-tools.yaml')
+const sampleTools = [
+  defineTool({
+    name: 'get_users',
+    description: '사용자 목록을 조회한다',
+    endpoint: 'GET /api/users',
+    responseType: 'table',
+    riskLevel: 'read',
+    columns: [{ key: 'id', label: 'ID' }],
+  }),
+]
 
 let mockApi: Server
 let apiPort: number
@@ -35,7 +40,7 @@ afterAll(() => mockApi.close())
 describe("createAIEngine — provider: 'custom'", () => {
   it('routes resolve / chat through the user-supplied LLMProvider instance', async () => {
     const resolveMock = vi.fn().mockResolvedValue({
-      toolCall: { toolName: 'get_users', params: {} },
+      toolCalls: [{ toolName: 'get_users', params: {} }],
       textContent: null,
       tokensIn: 7,
       tokensOut: 3,
@@ -47,7 +52,7 @@ describe("createAIEngine — provider: 'custom'", () => {
     }
 
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'custom', instance: customProvider },
       baseUrl: `http://localhost:${apiPort}`,
     })
@@ -61,7 +66,7 @@ describe("createAIEngine — provider: 'custom'", () => {
   it("throws when provider: 'custom' is set without an instance", () => {
     expect(() =>
       createAIEngine({
-        tools: fixturePath,
+        tools: sampleTools,
         llm: { provider: 'custom' } as unknown as { provider: 'custom'; instance: LLMProvider },
         baseUrl: `http://localhost:${apiPort}`,
       }),

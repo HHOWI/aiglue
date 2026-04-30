@@ -26,15 +26,16 @@ const summaryTool: ToolDefinition = {
   name: 'get_user',
   description: 'Get user info',
   endpoint: 'GET /api/users/:id',
-  response_type: 'summary',
+  responseType: 'summary',
+  columns: [{ key: 'id', label: 'ID' }], // summary requires columns or responseMapping.dataPath
 }
 
 const tableWithSummaryTool: ToolDefinition = {
   name: 'list_sales',
   description: 'List sales',
   endpoint: 'GET /api/sales',
-  response_type: 'table',
-  include_summary: true,
+  responseType: 'table',
+  includeSummary: true,
   columns: [{ key: 'id', label: 'ID' }],
 }
 
@@ -42,12 +43,12 @@ const plainTableTool: ToolDefinition = {
   name: 'plain',
   description: 'Plain',
   endpoint: 'GET /api/plain',
-  response_type: 'table',
+  responseType: 'table',
   columns: [{ key: 'id', label: 'ID' }],
 }
 
 describe('Summarizer.maybeSummarize', () => {
-  it('replaces base with AIESummaryResponse when response_type is summary', async () => {
+  it('replaces base with AIESummaryResponse when responseType is summary', async () => {
     const provider = makeProvider({ text: 'Alice는 admin입니다.' })
     const summarizer = new Summarizer(provider, makeLogger())
     const base: AIEResponse = { type: 'text', content: '{"id":1}' }
@@ -85,7 +86,7 @@ describe('Summarizer.maybeSummarize', () => {
     expect(messages.some(m => m.content.includes('get_user'))).toBe(true)
   })
 
-  it('fills AIETableResponse.summary when include_summary is true', async () => {
+  it('fills AIETableResponse.summary when includeSummary is true', async () => {
     const provider = makeProvider({ text: '총 5건, 합계 ₩1,000' })
     const summarizer = new Summarizer(provider, makeLogger())
     const base: AIETableResponse = {
@@ -138,7 +139,7 @@ describe('Summarizer.maybeSummarize', () => {
     }
   })
 
-  it('skips summary field on include_summary error, returns base table unchanged', async () => {
+  it('skips summary field on includeSummary error, returns base table unchanged', async () => {
     const provider = makeProvider(new Error('timeout'))
     const summarizer = new Summarizer(provider, makeLogger())
     const base: AIETableResponse = {

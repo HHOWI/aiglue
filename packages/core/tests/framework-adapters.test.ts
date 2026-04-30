@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import { createServer, type Server } from 'http'
 import { createAIEngine } from '../src/engine.js'
+import { defineTool } from '../src/define-tool.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, 'fixtures/sample-tools.yaml')
+const sampleTools = [
+  defineTool({
+    name: 'get_users',
+    description: '사용자 목록을 조회한다',
+    endpoint: 'GET /api/users',
+    responseType: 'table',
+    riskLevel: 'read',
+    columns: [{ key: 'id', label: 'ID' }],
+  }),
+]
 
 let upstream: Server
 let upstreamPort: number
@@ -35,17 +40,18 @@ afterAll(() => upstream.close())
 
 function buildEngine() {
   const engine = createAIEngine({
-    tools: fixturePath,
+    tools: sampleTools,
     llm: { provider: 'claude', apiKey: 'test-key' },
     baseUrl: `http://localhost:${upstreamPort}`,
   })
   engine._setProvider({
     resolve: vi.fn().mockResolvedValue({
-      toolCall: { toolName: 'get_users', params: {} },
+      toolCalls: [{ toolName: 'get_users', params: {} }],
       textContent: null,
       tokensIn: 5,
       tokensOut: 5,
     }),
+    chat: vi.fn(),
   })
   return engine
 }
@@ -170,7 +176,7 @@ describe('engine.dispatch() — framework-agnostic core', () => {
       },
       headers: {},
     })
-    // update_user PUT is unknown to upstream mock — expect upstream-error path, not crash.
+    // update_user is not in sampleTools → expect TOOL_NOT_FOUND error
     expect(['action', 'error']).toContain(result.type)
     engine.dispose()
   })

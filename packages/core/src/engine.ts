@@ -1,5 +1,4 @@
 import { randomUUID } from 'crypto'
-import { statSync } from 'fs'
 import { ToolRegistry } from './tool-registry.js'
 import { ClaudeProvider } from './providers/claude.js'
 import { OpenAIProvider } from './providers/openai.js'
@@ -17,7 +16,7 @@ import { DEFAULT_MESSAGES } from './messages.js'
 import { validateAIEngineConfig } from './config-validate.js'
 import { NO_OP_TRACER, SpanStatus, setAttr } from './observability/tracer.js'
 import type { SpanLike, TracerLike } from './observability/tracer.js'
-import type { AIEngineConfig, AIEResponse, ChatMessage, MessagesConfig } from './types.js'
+import type { AIEngineConfig, AIEResponse, AIEMultiResponse, ToolDefinition, ChatMessage, MessagesConfig } from './types.js'
 
 export interface HandlerRequest {
   headers?: Record<string, string | string[] | undefined>
@@ -54,9 +53,7 @@ export interface AIEngine {
   honoHandler(): (c: HonoContextLike) => Promise<Response>
   /** Framework-agnostic dispatcher — useful when wiring a runtime not covered by the built-in adapters. */
   dispatch(input: { body?: HandlerBody; headers?: Record<string, string | string[] | undefined>; rawRequest?: unknown }): Promise<AIEResponse>
-  /** Reload tools.yaml from disk. Atomic — failure leaves the existing registry intact. */
-  reload(): Promise<{ ok: true } | { ok: false; error: string }>
-  /** Stop background timers (rate-limiter sweep, hot-reload poller). Call on shutdown. */
+  /** Stop background timers (rate-limiter sweep). Call on shutdown. */
   dispose(): void
   /** @internal testing only */
   _setProvider(provider: LLMProvider): void
@@ -93,7 +90,7 @@ export interface HonoContextLike {
 
 export function createAIEngine(config: AIEngineConfig): AIEngine {
   validateAIEngineConfig(config)
-  const registry = ToolRegistry.fromFile(config.tools)
+  const registry = ToolRegistry.fromTools(config.tools)
   const formatter = new ResponseFormatter()
   const safety = new SafetyGate(registry)
   const executor = new Executor(
@@ -235,8 +232,10 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       setAttr(span, 'aiglue.tokens_out', llmTokensOut)
       if (route.fellBack) setAttr(span, 'aiglue.routing_fellback', true)
 
-      if (!llmResponse.toolCall) {
-        const textContent = llmResponse.textContent ?? ''
+      const { toolCalls, textContent } = llmResponse
+
+      if (toolCalls.length === 0) {
+        const text = textContent ?? ''
         logger.log({
           timestamp: new Date().toISOString(),
           userId: options?.userId,
@@ -249,128 +248,171 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
           success: true,
           responseType: 'text',
         })
-        return { type: 'text', content: textContent }
+        return { type: 'text', content: text }
       }
 
-      const { toolName, params } = llmResponse.toolCall
+      // ── Single-tool branch (preserves all existing behaviour) ──────────────
+      if (toolCalls.length === 1) {
+        const { toolName, params } = toolCalls[0]
 
-      // Clarify meta tool — the LLM is asking the user a follow-up question. Intercept before
-      // SafetyGate / Executor: this tool is reserved by the engine and never appears in tools.yaml.
-      if (toolName === CLARIFY_META_TOOL) {
-        const question = typeof params.question === 'string' ? params.question : ''
-        const clarifyOptions = Array.isArray(params.options)
-          ? (params.options.filter((o) => typeof o === 'string') as string[])
-          : undefined
-        const response = formatter.formatClarify(question, clarifyOptions)
+        // Clarify meta tool — the LLM is asking the user a follow-up question. Intercept before
+        // SafetyGate / Executor: this tool is reserved by the engine and never appears in tools.yaml.
+        if (toolName === CLARIFY_META_TOOL) {
+          const question = typeof params.question === 'string' ? params.question : ''
+          const clarifyOptions = Array.isArray(params.options)
+            ? (params.options.filter((o) => typeof o === 'string') as string[])
+            : undefined
+          const response = formatter.formatClarify(question, clarifyOptions)
+          logger.log({
+            timestamp: new Date().toISOString(),
+            userId: options?.userId,
+            input: message,
+            resolvedTool: null,
+            params: null,
+            latencyMs: Date.now() - startMs,
+            llmTokensIn,
+            llmTokensOut,
+            success: true,
+            responseType: 'clarify',
+          })
+          return response
+        }
+
+        resolvedTool = toolName
+        resolvedParams = params
+        const toolDef = registry.getTool(toolName)
+        const safeParams = redactParams(resolvedParams, toolDef?.sensitiveParams ?? [])
+
+        setAttr(span, 'aiglue.tool_name', toolName)
+        setAttr(span, 'aiglue.risk_level', toolDef?.riskLevel ?? 'read')
+
+        const safetyResult = safety.check(toolName, params)
+
+        if (!safetyResult.allowed) {
+          logger.log({
+            timestamp: new Date().toISOString(),
+            userId: options?.userId,
+            input: message,
+            resolvedTool,
+            params: safeParams,
+            latencyMs: Date.now() - startMs,
+            llmTokensIn,
+            llmTokensOut,
+            success: false,
+            responseType: 'error',
+            error: safetyResult.reason,
+          })
+          return formatter.formatError(messages.toolNotAvailableError, 'TOOL_NOT_ALLOWED')
+        }
+
+        if (safetyResult.requiresConfirm) {
+          const tool = registry.getTool(toolName)!
+          const confirmToken = randomUUID()
+          logger.log({
+            timestamp: new Date().toISOString(),
+            userId: options?.userId,
+            input: message,
+            resolvedTool,
+            params: safeParams,
+            latencyMs: Date.now() - startMs,
+            llmTokensIn,
+            llmTokensOut,
+            success: true,
+            responseType: 'confirm',
+          })
+          const confirmMsg = tool.confirmMessage ?? messages.confirmPrompt(tool.name, params)
+          return formatter.formatConfirm(tool, params, confirmMsg, confirmToken)
+        }
+
+        const executionResult = await executor.execute(toolName, params, options?.authToken)
+
+        if (executionResult.status >= 400) {
+          const internalDetail = `API returned status ${executionResult.status}`
+          const errorCode = executionResult.status >= 500 ? 'UPSTREAM_5XX' : 'UPSTREAM_4XX'
+          logger.log({
+            timestamp: new Date().toISOString(),
+            userId: options?.userId,
+            input: message,
+            resolvedTool,
+            params: safeParams,
+            latencyMs: Date.now() - startMs,
+            llmTokensIn,
+            llmTokensOut,
+            success: false,
+            responseType: 'error',
+            error: internalDetail,
+          })
+          return formatter.formatError(messages.upstreamError, errorCode)
+        }
+
+        const tool = registry.getTool(toolName)!
+        const base = formatter.format(tool, executionResult.data)
+        const response = await summarizer.maybeSummarize(
+          tool,
+          message,
+          executionResult.data,
+          base,
+        )
+
         logger.log({
           timestamp: new Date().toISOString(),
           userId: options?.userId,
           input: message,
-          resolvedTool: null,
-          params: null,
+          resolvedTool,
+          params: safeParams,
           latencyMs: Date.now() - startMs,
           llmTokensIn,
           llmTokensOut,
           success: true,
-          responseType: 'clarify',
+          responseType: response.type,
         })
+
         return response
       }
 
-      resolvedTool = toolName
-      resolvedParams = params
-      const toolDef = registry.getTool(toolName)
-      const safeParams = redactParams(resolvedParams, toolDef?.sensitive_params ?? [])
-
-      setAttr(span, 'aiglue.tool_name', toolName)
-      setAttr(span, 'aiglue.risk_level', toolDef?.risk_level ?? 'read')
-
-      const safetyResult = safety.check(toolName, params)
-
-      if (!safetyResult.allowed) {
-        logger.log({
-          timestamp: new Date().toISOString(),
-          userId: options?.userId,
-          input: message,
-          resolvedTool,
-          params: safeParams,
-          latencyMs: Date.now() - startMs,
-          llmTokensIn,
-          llmTokensOut,
-          success: false,
-          responseType: 'error',
-          error: safetyResult.reason,
-        })
-        return formatter.formatError(messages.toolNotAvailableError, 'TOOL_NOT_ALLOWED')
+      // ── Parallel branch (read-only tools only) ──────────────────────────────
+      const parallelToolDefs = toolCalls.map(c => registry.getTool(c.toolName)).filter(Boolean) as ToolDefinition[]
+      if (parallelToolDefs.length !== toolCalls.length) {
+        return formatter.formatError(
+          messages.toolNotAvailableError ?? DEFAULT_MESSAGES.toolNotAvailableError,
+          'TOOL_NOT_FOUND',
+        )
       }
-
-      if (safetyResult.requiresConfirm) {
-        const tool = registry.getTool(toolName)!
-        const confirmToken = randomUUID()
-        logger.log({
-          timestamp: new Date().toISOString(),
-          userId: options?.userId,
-          input: message,
-          resolvedTool,
-          params: safeParams,
-          latencyMs: Date.now() - startMs,
-          llmTokensIn,
-          llmTokensOut,
-          success: true,
-          responseType: 'confirm',
-        })
-        const confirmMsg = tool.confirm_message ?? messages.confirmPrompt(tool.name, params)
-        return formatter.formatConfirm(tool, params, confirmMsg, confirmToken)
+      const hasWrite = parallelToolDefs.some(t => t.riskLevel === 'write' || t.riskLevel === 'critical')
+      if (hasWrite) {
+        return formatter.formatError(
+          'Parallel tool use only supports read-only tools. Write operations must run alone.',
+          'PARALLEL_WRITE_NOT_ALLOWED',
+        )
       }
-
-      const executionResult = await executor.execute(toolName, params, options?.authToken)
-
-      if (executionResult.status >= 400) {
-        const internalDetail = `API returned status ${executionResult.status}`
-        const errorCode = executionResult.status >= 500 ? 'UPSTREAM_5XX' : 'UPSTREAM_4XX'
-        logger.log({
-          timestamp: new Date().toISOString(),
-          userId: options?.userId,
-          input: message,
-          resolvedTool,
-          params: safeParams,
-          latencyMs: Date.now() - startMs,
-          llmTokensIn,
-          llmTokensOut,
-          success: false,
-          responseType: 'error',
-          error: internalDetail,
-        })
-        return formatter.formatError(messages.upstreamError, errorCode)
-      }
-
-      const tool = registry.getTool(toolName)!
-      const base = formatter.format(tool, executionResult.data)
-      const response = await summarizer.maybeSummarize(
-        tool,
-        message,
-        executionResult.data,
-        base,
+      const parallelResults = await Promise.all(
+        toolCalls.map(async (c, i) => {
+          const def = parallelToolDefs[i]
+          const execResult = await executor.execute(c.toolName, c.params, options?.authToken)
+          if (execResult.status >= 400) {
+            const errorCode = execResult.status >= 500 ? 'UPSTREAM_5XX' : 'UPSTREAM_4XX'
+            return formatter.formatError(messages.upstreamError, errorCode)
+          }
+          return formatter.format(def, execResult.data)
+        }),
       )
-
       logger.log({
         timestamp: new Date().toISOString(),
         userId: options?.userId,
         input: message,
-        resolvedTool,
-        params: safeParams,
+        resolvedTool: null,
+        params: null,
         latencyMs: Date.now() - startMs,
         llmTokensIn,
         llmTokensOut,
         success: true,
-        responseType: response.type,
+        responseType: 'multi',
       })
-
-      return response
+      return formatter.formatMulti(parallelResults as Exclude<AIEResponse, AIEMultiResponse>[])
     } catch (err) {
       const internalDetail = err instanceof Error ? err.message : String(err)
       logger.error('processMessage failed', err)
-      const catchSafeParams = redactParams(resolvedParams, resolvedTool ? (registry.getTool(resolvedTool)?.sensitive_params ?? []) : [])
+      const catchSafeParams = redactParams(resolvedParams, resolvedTool ? (registry.getTool(resolvedTool)?.sensitiveParams ?? []) : [])
       logger.log({
         timestamp: new Date().toISOString(),
         userId: options?.userId,
@@ -415,7 +457,7 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
   ): Promise<AIEResponse> {
     const startMs = Date.now()
     const confirmToolDef = registry.getTool(toolName)
-    const confirmSafeParams = redactParams(params, confirmToolDef?.sensitive_params ?? [])
+    const confirmSafeParams = redactParams(params, confirmToolDef?.sensitiveParams ?? [])
 
     try {
       if (!registry.hasTool(toolName)) {
@@ -581,54 +623,6 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     rebuildResolver()
   }
 
-  // Hot reload — polling (B) + explicit engine.reload() (C). The two share the same atomic
-  // registry.loadFromFile() path, so both fail safely (existing tools stay live on parse errors).
-  let pendingReload: Promise<void> = Promise.resolve()
-  let lastMtimeMs: number | null = (() => {
-    try {
-      return statSync(config.tools).mtimeMs
-    } catch {
-      return null
-    }
-  })()
-
-  async function reload(): Promise<{ ok: true } | { ok: false; error: string }> {
-    let outcome: { ok: true } | { ok: false; error: string } = { ok: true }
-    pendingReload = pendingReload.then(() => {
-      try {
-        registry.loadFromFile(config.tools)
-        try {
-          lastMtimeMs = statSync(config.tools).mtimeMs
-        } catch {
-          // mtime read failure is non-fatal — reload itself succeeded
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        logger.error('tools reload failed', err)
-        outcome = { ok: false, error: msg }
-      }
-    })
-    await pendingReload
-    return outcome
-  }
-
-  const pollIntervalMs = config.hotReload?.pollIntervalMs ?? 0
-  let reloadPoller: ReturnType<typeof setInterval> | null = null
-  if (pollIntervalMs > 0) {
-    reloadPoller = setInterval(() => {
-      try {
-        const mtime = statSync(config.tools).mtimeMs
-        if (lastMtimeMs !== null && mtime !== lastMtimeMs) {
-          void reload()
-        }
-        lastMtimeMs = mtime
-      } catch (err) {
-        logger.error('tools reload poll failed', err)
-      }
-    }, pollIntervalMs)
-    reloadPoller.unref?.()
-  }
-
   let disposed = false
   let signalHandlers: Array<{ signal: NodeJS.Signals; handler: () => void }> = []
 
@@ -636,10 +630,6 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     if (disposed) return
     disposed = true
     rateLimiter.dispose()
-    if (reloadPoller) {
-      clearInterval(reloadPoller)
-      reloadPoller = null
-    }
     for (const { signal, handler } of signalHandlers) {
       process.off(signal, handler)
     }
@@ -661,7 +651,6 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
     fastifyHandler,
     honoHandler,
     dispatch,
-    reload,
     dispose,
     _setProvider,
   }

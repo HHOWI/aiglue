@@ -6,8 +6,8 @@ const tableTool: ToolDefinition = {
   name: 'get_users',
   description: 'Get users',
   endpoint: 'GET /api/users',
-  response_type: 'table',
-  response_mapping: { data_path: 'data.items', total_path: 'data.total' },
+  responseType: 'table',
+  responseMapping: { dataPath: 'data.items', totalPath: 'data.total' },
   columns: [
     { key: 'id', label: 'ID' },
     { key: 'name', label: '이름' },
@@ -18,7 +18,7 @@ const textTool: ToolDefinition = {
   name: 'get_count',
   description: 'Get count',
   endpoint: 'GET /api/count',
-  response_type: 'text',
+  responseType: 'text',
 }
 
 const noTypeTool: ToolDefinition = {
@@ -30,7 +30,7 @@ const noTypeTool: ToolDefinition = {
 describe('ResponseFormatter', () => {
   const formatter = new ResponseFormatter()
 
-  it('should format table response with response_mapping', () => {
+  it('should format table response with responseMapping', () => {
     const apiResponse = {
       data: {
         items: [
@@ -57,21 +57,21 @@ describe('ResponseFormatter', () => {
     }
   })
 
-  it('should default to text for unknown response_type', () => {
+  it('should default to text for unknown responseType', () => {
     const result = formatter.format(noTypeTool, { success: true })
     expect(result.type).toBe('text')
   })
 
-  it('should return error when data_path is not found in response', () => {
+  it('should return error when dataPath is not found in response', () => {
     const result = formatter.format(tableTool, { wrong: 'shape' })
     expect(result.type).toBe('error')
     if (result.type === 'error') {
       expect(result.code).toBe('DATA_PATH_NOT_FOUND')
-      expect(result.message).toContain('data_path')
+      expect(result.message).toContain('dataPath')
     }
   })
 
-  it('should return error when data_path resolves to non-array', () => {
+  it('should return error when dataPath resolves to non-array', () => {
     const result = formatter.format(tableTool, { data: { items: 'not-an-array' } })
     expect(result.type).toBe('error')
     if (result.type === 'error') {
@@ -93,7 +93,7 @@ describe('ResponseFormatter', () => {
       name: 'delete_user',
       description: 'Delete user',
       endpoint: 'DELETE /api/users/:id',
-      confirm_message: '삭제합니다. 진행할까요?',
+      confirmMessage: '삭제합니다. 진행할까요?',
     }
     const result = formatter.formatConfirm(tool, { id: '1' })
     expect(result.type).toBe('confirm')
@@ -103,12 +103,12 @@ describe('ResponseFormatter', () => {
     }
   })
 
-  it('should use explicit message arg over tool.confirm_message in formatConfirm', () => {
+  it('should use explicit message arg over tool.confirmMessage in formatConfirm', () => {
     const tool: ToolDefinition = {
       name: 'delete_user',
       description: 'Delete user',
       endpoint: 'DELETE /api/users/:id',
-      confirm_message: 'original message',
+      confirmMessage: 'original message',
     }
     const result = formatter.formatConfirm(tool, { id: '1' }, 'override message')
     expect(result.type).toBe('confirm')
@@ -125,12 +125,12 @@ describe('ResponseFormatter', () => {
     }
   })
 
-  it('should handle array response without response_mapping', () => {
+  it('should handle array response without responseMapping', () => {
     const arrayTool: ToolDefinition = {
       name: 'list',
       description: 'List',
       endpoint: 'GET /api/items',
-      response_type: 'table',
+      responseType: 'table',
       columns: [{ key: 'id', label: 'ID' }],
     }
     const result = formatter.format(arrayTool, [{ id: 1 }, { id: 2 }])
@@ -140,12 +140,12 @@ describe('ResponseFormatter', () => {
     }
   })
 
-  it('should passthrough API response when response_type is raw', () => {
+  it('should passthrough API response when responseType is raw', () => {
     const rawTool: ToolDefinition = {
       name: 'get_dashboard',
       description: 'Dashboard payload handled by frontend grid',
       endpoint: 'GET /api/dashboard',
-      response_type: 'raw',
+      responseType: 'raw',
     }
     const apiResponse = {
       items: [{ id: 1, name: 'Alice' }],
@@ -159,13 +159,13 @@ describe('ResponseFormatter', () => {
     }
   })
 
-  it('should coerce total_path string value to number', () => {
+  it('should coerce totalPath string value to number', () => {
     const toolWithTotal: ToolDefinition = {
       name: 'list_items',
       description: 'List items',
       endpoint: 'GET /api/items',
-      response_type: 'table',
-      response_mapping: { data_path: 'data', total_path: 'meta.total' },
+      responseType: 'table',
+      responseMapping: { dataPath: 'data', totalPath: 'meta.total' },
       columns: [{ key: 'id', label: 'ID' }],
     }
     const apiResponse = {
@@ -185,7 +185,7 @@ describe('ResponseFormatter', () => {
       name: 'anything',
       description: 'Anything',
       endpoint: 'GET /api/anything',
-      response_type: 'raw',
+      responseType: 'raw',
     }
     const arrayResult = formatter.format(rawTool, [1, 2, 3])
     expect(arrayResult.type).toBe('raw')

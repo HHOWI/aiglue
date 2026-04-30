@@ -1,13 +1,38 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import { createServer, type Server } from 'http'
 import { createAIEngine } from '../src/engine.js'
+import { defineTool } from '../src/define-tool.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, 'fixtures/summary-tools.yaml')
+const summaryTools = [
+  defineTool({
+    name: 'get_user_summary',
+    description: 'Get user info, summarized as natural language',
+    endpoint: 'GET /api/user',
+    responseType: 'summary',
+    columns: [{ key: 'id', label: 'ID' }],
+  }),
+  defineTool({
+    name: 'list_sales_with_summary',
+    description: 'List sales as a table with an LLM summary sentence',
+    endpoint: 'GET /api/sales',
+    responseType: 'table',
+    includeSummary: true,
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'total', label: 'Total' },
+    ],
+  }),
+  defineTool({
+    name: 'list_sales_plain',
+    description: 'List sales without summary',
+    endpoint: 'GET /api/sales',
+    responseType: 'table',
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'total', label: 'Total' },
+    ],
+  }),
+]
 
 let mockApi: Server
 let apiPort: number
@@ -37,16 +62,16 @@ beforeAll(async () => {
 afterAll(() => mockApi.close())
 
 describe('engine summary path', () => {
-  it('returns AIESummaryResponse when tool has response_type: summary', async () => {
+  it('returns AIESummaryResponse when tool has responseType: summary', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: summaryTools,
       llm: { provider: 'claude', apiKey: 'x' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_user_summary', params: {} },
+        toolCalls: [{ toolName: 'get_user_summary', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 5,
@@ -66,16 +91,16 @@ describe('engine summary path', () => {
     }
   })
 
-  it('adds summary field to table when include_summary is true', async () => {
+  it('adds summary field to table when includeSummary is true', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: summaryTools,
       llm: { provider: 'claude', apiKey: 'x' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'list_sales_with_summary', params: {} },
+        toolCalls: [{ toolName: 'list_sales_with_summary', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 5,
@@ -97,7 +122,7 @@ describe('engine summary path', () => {
 
   it('does not call chat() for tools without summary opt-in', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: summaryTools,
       llm: { provider: 'claude', apiKey: 'x' },
       baseUrl: `http://localhost:${apiPort}`,
     })
@@ -105,7 +130,7 @@ describe('engine summary path', () => {
     const chatMock = vi.fn().mockResolvedValue({ text: 'should not be used', tokensIn: 0, tokensOut: 0 })
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'list_sales_plain', params: {} },
+        toolCalls: [{ toolName: 'list_sales_plain', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 5,
@@ -120,14 +145,14 @@ describe('engine summary path', () => {
 
   it('degrades summary to text fallback when chat() fails', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: summaryTools,
       llm: { provider: 'claude', apiKey: 'x' },
       baseUrl: `http://localhost:${apiPort}`,
     })
 
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_user_summary', params: {} },
+        toolCalls: [{ toolName: 'get_user_summary', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 5,

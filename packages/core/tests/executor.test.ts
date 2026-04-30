@@ -1,14 +1,36 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { Executor } from '../src/executor.js'
 import { ToolRegistry } from '../src/tool-registry.js'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
+import { defineTool } from '../src/define-tool.js'
+import { z } from 'zod'
 import { createServer, type Server } from 'http'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, 'fixtures/sample-tools.yaml')
+const sampleTools = [
+  defineTool({
+    name: 'get_users',
+    description: '사용자 목록을 조회한다',
+    endpoint: 'GET /api/users',
+    responseType: 'table',
+    riskLevel: 'read',
+    columns: [{ key: 'id', label: 'ID' }],
+  }),
+  defineTool({
+    name: 'update_user',
+    description: '사용자 정보를 수정한다',
+    endpoint: 'PUT /api/users/:id',
+    params: z.object({ id: z.string(), name: z.string().optional() }),
+    riskLevel: 'write',
+    confirmMessage: '사용자 정보를 수정합니다. 진행할까요?',
+  }),
+  defineTool({
+    name: 'delete_user',
+    description: '사용자를 삭제한다',
+    endpoint: 'DELETE /api/users/:id',
+    params: z.object({ id: z.string() }),
+    riskLevel: 'critical',
+    confirmMessage: '사용자를 삭제합니다. 이 작업은 되돌릴 수 없습니다.',
+  }),
+]
 
 let mockServer: Server
 let serverPort: number
@@ -55,7 +77,7 @@ afterAll(() => {
 
 describe('Executor', () => {
   it('should execute a GET request based on tool definition', async () => {
-    const registry = ToolRegistry.fromFile(fixturePath)
+    const registry = ToolRegistry.fromTools(sampleTools)
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
     const result = await executor.execute('get_users', {})
@@ -68,7 +90,7 @@ describe('Executor', () => {
   })
 
   it('should add query params for GET requests', async () => {
-    const registry = ToolRegistry.fromFile(fixturePath)
+    const registry = ToolRegistry.fromTools(sampleTools)
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
     const result = await executor.execute('get_users', { role: 'admin' })
@@ -76,7 +98,7 @@ describe('Executor', () => {
   })
 
   it('should replace path params and send body for PUT', async () => {
-    const registry = ToolRegistry.fromFile(fixturePath)
+    const registry = ToolRegistry.fromTools(sampleTools)
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
     const result = await executor.execute('update_user', { id: '1', name: 'Updated' })
@@ -85,14 +107,14 @@ describe('Executor', () => {
   })
 
   it('should throw when tool is not found', async () => {
-    const registry = ToolRegistry.fromFile(fixturePath)
+    const registry = ToolRegistry.fromTools(sampleTools)
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
     await expect(executor.execute('nonexistent', {})).rejects.toThrow('Tool not found')
   })
 
   it('should pass auth token in Authorization header', async () => {
-    const registry = ToolRegistry.fromFile(fixturePath)
+    const registry = ToolRegistry.fromTools(sampleTools)
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
     const result = await executor.execute('update_user', { id: '1', name: 'Test' }, 'my-jwt-token')
@@ -101,17 +123,14 @@ describe('Executor', () => {
   })
 
   it('should include boolean false in query params', async () => {
-    const registry = ToolRegistry.fromConfig({
-      tools_yaml_version: '1.0',
-      tools: [{
+    const registry = ToolRegistry.fromTools([
+      defineTool({
         name: 'search',
         description: 'Search',
         endpoint: 'GET /api/search',
-        params: {
-          active: { description: 'Active filter', type: 'string', required: false },
-        },
-      }],
-    })
+        riskLevel: 'read',
+      }),
+    ])
     let capturedUrl = ''
     const captureServer = createServer((req, res) => {
       capturedUrl = req.url ?? ''
@@ -133,17 +152,14 @@ describe('Executor', () => {
   })
 
   it('should include 0 in query params', async () => {
-    const registry = ToolRegistry.fromConfig({
-      tools_yaml_version: '1.0',
-      tools: [{
+    const registry = ToolRegistry.fromTools([
+      defineTool({
         name: 'page',
         description: 'Page',
         endpoint: 'GET /api/items',
-        params: {
-          offset: { description: 'Offset', type: 'number', required: false },
-        },
-      }],
-    })
+        riskLevel: 'read',
+      }),
+    ])
     let capturedUrl = ''
     const captureServer = createServer((req, res) => {
       capturedUrl = req.url ?? ''
@@ -164,17 +180,15 @@ describe('Executor', () => {
   })
 
   it('should throw when required path param is null', async () => {
-    const registry = ToolRegistry.fromConfig({
-      tools_yaml_version: '1.0',
-      tools: [{
+    const registry = ToolRegistry.fromTools([
+      defineTool({
         name: 'get_item',
         description: 'Get item',
         endpoint: 'GET /api/items/:id',
-        params: {
-          id: { description: 'Item ID', type: 'string', required: true },
-        },
-      }],
-    })
+        params: z.object({ id: z.string() }),
+        riskLevel: 'read',
+      }),
+    ])
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
     await expect(
@@ -183,17 +197,15 @@ describe('Executor', () => {
   })
 
   it('should throw when required path param is undefined', async () => {
-    const registry = ToolRegistry.fromConfig({
-      tools_yaml_version: '1.0',
-      tools: [{
+    const registry = ToolRegistry.fromTools([
+      defineTool({
         name: 'get_item',
         description: 'Get item',
         endpoint: 'GET /api/items/:id',
-        params: {
-          id: { description: 'Item ID', type: 'string', required: true },
-        },
-      }],
-    })
+        params: z.object({ id: z.string() }),
+        riskLevel: 'read',
+      }),
+    ])
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
     await expect(
@@ -202,15 +214,14 @@ describe('Executor', () => {
   })
 
   it('should reject responses with Content-Length over maxResponseBytes', async () => {
-    const registry = ToolRegistry.fromConfig({
-      tools_yaml_version: '1.0',
-      tools: [{
+    const registry = ToolRegistry.fromTools([
+      defineTool({
         name: 'big',
         description: 'big',
         endpoint: 'GET /api/big',
-        params: {},
-      }],
-    })
+        riskLevel: 'read',
+      }),
+    ])
     const huge = 'x'.repeat(2000)
     const bigServer = createServer((_req, res) => {
       res.writeHead(200, {
@@ -232,15 +243,14 @@ describe('Executor', () => {
   })
 
   it('should reject chunked responses that exceed maxResponseBytes during streaming', async () => {
-    const registry = ToolRegistry.fromConfig({
-      tools_yaml_version: '1.0',
-      tools: [{
+    const registry = ToolRegistry.fromTools([
+      defineTool({
         name: 'chunked',
         description: 'chunked',
         endpoint: 'GET /api/chunked',
-        params: {},
-      }],
-    })
+        riskLevel: 'read',
+      }),
+    ])
     const chunkedServer = createServer((_req, res) => {
       // Omit Content-Length → chunked transfer
       res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -262,17 +272,15 @@ describe('Executor', () => {
   })
 
   it('should URL-encode path params to prevent path injection', async () => {
-    const registry = ToolRegistry.fromConfig({
-      tools_yaml_version: '1.0',
-      tools: [{
+    const registry = ToolRegistry.fromTools([
+      defineTool({
         name: 'get_item',
         description: 'Get item',
         endpoint: 'GET /api/items/:id',
-        params: {
-          id: { description: 'Item ID', type: 'string', required: true },
-        },
-      }],
-    })
+        params: z.object({ id: z.string() }),
+        riskLevel: 'read',
+      }),
+    ])
     let capturedUrl = ''
     const captureServer = createServer((req, res) => {
       capturedUrl = req.url ?? ''

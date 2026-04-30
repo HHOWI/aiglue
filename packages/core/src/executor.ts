@@ -65,7 +65,7 @@ export class Executor {
     // Build request body for POST/PUT/PATCH
     let body: string | undefined
     if (['POST', 'PUT', 'PATCH'].includes(method)) {
-      const bodyData: Record<string, unknown> = { ...(tool.request_body_template ?? {}) }
+      const bodyData: Record<string, unknown> = { ...(tool.requestBodyTemplate ?? {}) }
       for (const [key, value] of Object.entries(params)) {
         if (!path.includes(`:${key}`)) {
           bodyData[key] = value

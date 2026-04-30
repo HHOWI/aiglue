@@ -80,7 +80,7 @@ export class Router {
       const tokensIn = response.tokensIn
       const tokensOut = response.tokensOut
 
-      const namesRaw = (response.toolCall?.params as { names?: unknown } | undefined)?.names
+      const namesRaw = (response.toolCalls[0]?.params as { names?: unknown } | undefined)?.names
       if (!Array.isArray(namesRaw)) {
         return { tools: this.registry.toLLMTools(), tokensIn, tokensOut, fellBack: true }
       }

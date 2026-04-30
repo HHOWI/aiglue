@@ -1,14 +1,28 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
-import { resolve } from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import { createServer, type Server } from 'http'
 import { createAIEngine } from '../../src/engine.js'
+import { defineTool } from '../../src/define-tool.js'
+import { z } from 'zod'
 import type { TracerLike, SpanLike } from '../../src/observability/tracer.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, '../fixtures/sample-tools.yaml')
+const sampleTools = [
+  defineTool({
+    name: 'get_users',
+    description: '사용자 목록을 조회한다',
+    endpoint: 'GET /api/users',
+    responseType: 'table',
+    riskLevel: 'read',
+    columns: [{ key: 'id', label: 'ID' }],
+  }),
+  defineTool({
+    name: 'update_user',
+    description: '사용자 정보를 수정한다',
+    endpoint: 'PUT /api/users/:id',
+    params: z.object({ id: z.string(), name: z.string().optional() }),
+    riskLevel: 'write',
+    confirmMessage: '사용자 정보를 수정합니다. 진행할까요?',
+  }),
+]
 
 let mockApi: Server
 let apiPort: number
@@ -76,18 +90,19 @@ describe('Engine observability — processMessage span', () => {
   it('emits a single root span with status OK and per-call attributes on success', async () => {
     const { tracer, spans } = createCapturingTracer()
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
       observability: { tracer },
     })
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
+        toolCalls: [{ toolName: 'get_users', params: {} }],
         textContent: null,
         tokensIn: 100,
         tokensOut: 20,
       }),
+      chat: vi.fn(),
     })
 
     await engine.processMessage('show users', { userId: 'u-1' })
@@ -108,20 +123,19 @@ describe('Engine observability — processMessage span', () => {
   it('marks the span ERROR with the engine error code on a graceful AIE error response', async () => {
     const { tracer, spans } = createCapturingTracer()
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
       observability: { tracer },
     })
-    // No userId → first global hit is fine; force rate limit by setting a stupidly tight global cap.
-    // Easier path: provide a resolve mock that picks an unknown tool → safety rejects.
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'not_in_whitelist', params: {} },
+        toolCalls: [{ toolName: 'not_in_whitelist', params: {} }],
         textContent: null,
         tokensIn: 10,
         tokensOut: 5,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('hack')
@@ -134,18 +148,16 @@ describe('Engine observability — processMessage span', () => {
   })
 
   it('records exception + ends the span when an unexpected throw escapes processMessage', async () => {
-    // The engine catches unexpected errors and returns INTERNAL_ERROR — so the span ends OK from
-    // the inner returns-error path. But the LLM provider failure case still routes through the same
-    // graceful path. Verify that even in that path, the span is ended and tagged ERROR with the code.
     const { tracer, spans } = createCapturingTracer()
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
       observability: { tracer },
     })
     engine._setProvider({
       resolve: vi.fn().mockRejectedValue(new Error('LLM gateway timeout')),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('something')
@@ -162,7 +174,7 @@ describe('Engine observability — confirmAndExecute span', () => {
   it('emits a confirmAndExecute span with tool_name and idempotency flag', async () => {
     const { tracer, spans } = createCapturingTracer()
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
       observability: { tracer },
@@ -184,17 +196,18 @@ describe('Engine observability — confirmAndExecute span', () => {
 describe('Engine observability — no-op default', () => {
   it('does not throw when observability is omitted', async () => {
     const engine = createAIEngine({
-      tools: fixturePath,
+      tools: sampleTools,
       llm: { provider: 'claude', apiKey: 'k' },
       baseUrl: `http://localhost:${apiPort}`,
     })
     engine._setProvider({
       resolve: vi.fn().mockResolvedValue({
-        toolCall: { toolName: 'get_users', params: {} },
+        toolCalls: [{ toolName: 'get_users', params: {} }],
         textContent: null,
         tokensIn: 1,
         tokensOut: 1,
       }),
+      chat: vi.fn(),
     })
 
     const result = await engine.processMessage('show users')

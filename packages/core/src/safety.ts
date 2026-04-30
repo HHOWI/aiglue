@@ -19,7 +19,7 @@ export class SafetyGate {
     }
 
     const tool = this.registry.getTool(toolName)!
-    const riskLevel = tool.risk_level ?? 'read'
+    const riskLevel = tool.riskLevel ?? 'read'
 
     if (riskLevel === 'read') {
       return { allowed: true, requiresConfirm: false }
