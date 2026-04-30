@@ -36,6 +36,16 @@ export class Executor {
       throw new Error(`Tool not found: ${toolName}`)
     }
 
+    if (tool.params) {
+      const parsed = tool.params.safeParse(params)
+      if (!parsed.success) {
+        throw new Error(
+          `[aiglue] tool "${tool.name}": params validation failed — ${parsed.error.message}`,
+        )
+      }
+      params = parsed.data as Record<string, unknown>
+    }
+
     const { method, path } = this.registry.parseEndpoint(tool.endpoint)
 
     // Validate all path params are provided (non-null)

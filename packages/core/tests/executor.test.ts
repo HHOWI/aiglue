@@ -191,9 +191,10 @@ describe('Executor', () => {
     ])
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
+    // zod catches null before the path-param check fires
     await expect(
       executor.execute('get_item', { id: null as unknown as string })
-    ).rejects.toThrow('Missing required path param')
+    ).rejects.toThrow('params validation failed')
   })
 
   it('should throw when required path param is undefined', async () => {
@@ -208,9 +209,10 @@ describe('Executor', () => {
     ])
     const executor = new Executor(registry, `http://localhost:${serverPort}`)
 
+    // zod catches missing required field before the path-param check fires
     await expect(
       executor.execute('get_item', {})
-    ).rejects.toThrow('Missing required path param')
+    ).rejects.toThrow('params validation failed')
   })
 
   it('should reject responses with Content-Length over maxResponseBytes', async () => {
@@ -269,6 +271,23 @@ describe('Executor', () => {
     const exec = new Executor(registry, `http://localhost:${chunkedPort}`, 10_000, 1000)
     await expect(exec.execute('chunked', {})).rejects.toThrow('exceeds maxResponseBytes')
     await new Promise<void>((r) => chunkedServer.close(() => r()))
+  })
+
+  it('throws validation error when LLM-supplied params fail schema', async () => {
+    const registry = ToolRegistry.fromTools([
+      defineTool({
+        name: 'get_user',
+        description: 'get',
+        endpoint: 'GET /users/:id',
+        params: z.object({ id: z.string() }),
+        riskLevel: 'read',
+      }),
+    ])
+    const exec = new Executor(registry, `http://localhost:${serverPort}`)
+
+    await expect(
+      exec.execute('get_user', { id: 42 } as unknown as Record<string, unknown>),
+    ).rejects.toThrow(/params validation failed/)
   })
 
   it('should URL-encode path params to prevent path injection', async () => {
