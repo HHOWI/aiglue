@@ -67,6 +67,8 @@ export class OpenAIProvider implements LLMProvider {
       for (const tc of message.tool_calls) {
         if (tc.type === 'function') {
           let params: Record<string, unknown> = {}
+          // OpenAI-compatible servers occasionally emit '' instead of '{}' for no-arg calls.
+          // Treat any falsy `arguments` as "no parameters" rather than letting JSON.parse throw.
           if (tc.function.arguments) {
             try {
               params = JSON.parse(tc.function.arguments) as Record<string, unknown>
@@ -80,6 +82,10 @@ export class OpenAIProvider implements LLMProvider {
             toolName: tc.function.name,
             params,
           })
+        } else {
+          // Future-proofing: the OpenAI spec is extensible. Surface unknown types instead of
+          // silently dropping them, so non-conforming compatible backends are debuggable.
+          console.warn(`[aiglue] OpenAIProvider: unknown tool_calls entry type "${(tc as { type?: string }).type ?? '<missing>'}" — skipped`)
         }
       }
     }
