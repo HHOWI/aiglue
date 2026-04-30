@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { LLMProvider, ChatOptions, ChatResponse } from './types.js'
-import type { ChatMessage, LLMToolDefinition, LLMResponse } from '../types.js'
+import type { ChatMessage, LLMToolDefinition, LLMResponse, LLMToolCallResult } from '../types.js'
 
 export class ClaudeProvider implements LLMProvider {
   private client: Anthropic
@@ -53,7 +53,7 @@ export class ClaudeProvider implements LLMProvider {
       tools: anthropicTools,
     })
 
-    const toolCalls: { toolName: string; params: Record<string, unknown> }[] = []
+    const toolCalls: LLMToolCallResult[] = []
     let textContent: string | null = null
     for (const block of response.content) {
       if (block.type === 'tool_use') {
