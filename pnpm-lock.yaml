@@ -94,6 +94,9 @@ importers:
       openai:
         specifier: ^4.77.0
         version: 4.104.0(zod@3.25.76)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
       zod-to-json-schema:
         specifier: ^3.22.0
         version: 3.25.2(zod@3.25.76)
@@ -2755,8 +2758,7 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  yaml@2.8.3:
-    optional: true
+  yaml@2.8.3: {}
 
   zod-to-json-schema@3.25.2(zod@3.25.76):
     dependencies:
