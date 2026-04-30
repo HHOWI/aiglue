@@ -5,7 +5,9 @@ import type { LLMProvider } from '../src/providers/types.js'
 import type { LLMResponse, ToolDefinition } from '../src/types.js'
 import { ToolRegistry } from '../src/tool-registry.js'
 
-/** 3-tool fixture — mirrors the shape of sample-tools.yaml for count-sensitive tests. */
+/** 3-tool inline fixture — count must stay at 3 for the tools-length assertion below.
+ *  Plain object literals (not `defineTool()` outputs) — intentionally bypasses Task 3
+ *  semantic validation since the resolver tests don't exercise validation. */
 const SAMPLE_TOOLS: ToolDefinition[] = [
   {
     name: 'get_users',
@@ -153,5 +155,26 @@ describe('IntentResolver', () => {
     expect(result.toolCalls).toHaveLength(1)
     expect(result.toolCalls[0].toolName).toBe('__aiglue_clarify__')
     expect(result.toolCalls[0].params.question).toBe('무엇을 도와드릴까요?')
+  })
+
+  it('does NOT filter when clarify is at index >= 1 (only index 0 is the contract)', async () => {
+    const registry = createRegistry()
+    const mockProvider = createMockProvider({
+      toolCalls: [
+        { toolName: 'get_users', params: {} },
+        { toolName: '__aiglue_clarify__', params: { question: 'oops' } },
+      ],
+      textContent: null,
+      tokensIn: 500,
+      tokensOut: 60,
+    })
+    const resolver = new IntentResolver(mockProvider, registry)
+
+    const result = await resolver.resolve('보여줘')
+
+    // Both calls flow through; engine's TOOL_NOT_FOUND or parallel branch will surface the issue.
+    expect(result.toolCalls).toHaveLength(2)
+    expect(result.toolCalls[0].toolName).toBe('get_users')
+    expect(result.toolCalls[1].toolName).toBe('__aiglue_clarify__')
   })
 })

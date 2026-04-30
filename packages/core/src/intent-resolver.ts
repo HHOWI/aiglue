@@ -82,6 +82,11 @@ export class IntentResolver {
 
     // If the first tool call is the clarify meta tool, suppress any parallel sibling calls.
     // The engine will intercept the clarify call before SafetyGate/Executor.
+    //
+    // We only check index 0: clarify is expected to be first when present (the system prompt
+    // instructs the LLM that clarify must be its sole call when used). A clarify at index 1+
+    // alongside real tool calls is treated as the LLM ignoring instructions — those will fall
+    // through to the engine's normal parallel branch where TOOL_NOT_FOUND surfaces.
     if (response.toolCalls.length > 1 && response.toolCalls[0].toolName === CLARIFY_META_TOOL) {
       return { ...response, toolCalls: [response.toolCalls[0]] }
     }
