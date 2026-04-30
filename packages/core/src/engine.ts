@@ -371,12 +371,17 @@ export function createAIEngine(config: AIEngineConfig): AIEngine {
       }
 
       // ── Parallel branch (read-only tools only) ──────────────────────────────
-      const parallelToolDefs = toolCalls.map(c => registry.getTool(c.toolName)).filter(Boolean) as ToolDefinition[]
-      if (parallelToolDefs.length !== toolCalls.length) {
-        return formatter.formatError(
-          messages.toolNotAvailableError ?? DEFAULT_MESSAGES.toolNotAvailableError,
-          'TOOL_NOT_FOUND',
-        )
+      // Resolve every tool definition up-front. We sequence (not filter) so the resulting
+      // array is positionally aligned with toolCalls — `parallelToolDefs[i]` always
+      // belongs to `toolCalls[i]`. A single missing definition short-circuits with
+      // TOOL_NOT_FOUND before we touch the executor.
+      const parallelToolDefs: ToolDefinition[] = []
+      for (const c of toolCalls) {
+        const def = registry.getTool(c.toolName)
+        if (!def) {
+          return formatter.formatError(messages.toolNotAvailableError, 'TOOL_NOT_FOUND')
+        }
+        parallelToolDefs.push(def)
       }
       const hasWrite = parallelToolDefs.some(t => t.riskLevel === 'write' || t.riskLevel === 'critical')
       if (hasWrite) {

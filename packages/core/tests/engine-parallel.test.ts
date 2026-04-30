@@ -60,4 +60,26 @@ describe('engine — parallel tool use', () => {
     expect(result.type).toBe('error')
     if (result.type === 'error') expect(result.code).toBe('PARALLEL_WRITE_NOT_ALLOWED')
   })
+
+  it('returns TOOL_NOT_FOUND when LLM emits an unknown tool name in parallel', async () => {
+    const sales = defineTool({ name: 'sales', description: 'today sales', endpoint: 'GET /sales', responseType: 'raw', riskLevel: 'read' })
+    const engine = createAIEngine({
+      tools: [sales],
+      baseUrl: 'http://127.0.0.1:1',
+      llm: { provider: 'claude', apiKey: 'sk-test' },
+    })
+    engine._setProvider({
+      resolve: vi.fn().mockResolvedValue({
+        toolCalls: [
+          { toolName: 'sales', params: {} },
+          { toolName: 'mystery_tool', params: {} },
+        ],
+        textContent: null, tokensIn: 0, tokensOut: 0,
+      }),
+      chat: vi.fn(),
+    })
+    const result = await engine.processMessage('show both')
+    expect(result.type).toBe('error')
+    if (result.type === 'error') expect(result.code).toBe('TOOL_NOT_FOUND')
+  })
 })
