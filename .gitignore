@@ -36,6 +36,5 @@ coverage/
 *.tmp
 .cache/
 
-# Implementation plans (superpowers working notes — kept local)
-# Specs remain committed under docs/superpowers/specs/ as design-decision record.
-docs/superpowers/plans/
+# Superpowers working notes (specs + plans) — kept local, not committed.
+docs/superpowers/
