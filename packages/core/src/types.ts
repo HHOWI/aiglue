@@ -1,42 +1,28 @@
 // ── tools.yaml 스펙 타입 ──
 
-export interface ToolsConfig {
-  tools_yaml_version: string
-  tools: ToolDefinition[]
-}
+import type { ZodObject, ZodRawShape } from 'zod'
 
-export interface ToolDefinition {
+export interface ToolDefinition<TParams extends ZodRawShape = ZodRawShape> {
   name: string
   description: string
   endpoint: string
-  params?: Record<string, ParamDefinition>
-  request_body_template?: Record<string, unknown>
-  response_mapping?: ResponseMapping
+  params?: ZodObject<TParams>
+  requestBodyTemplate?: Record<string, unknown>
+  responseMapping?: ResponseMapping
+  responseType?: 'text' | 'table' | 'raw' | 'summary'
   columns?: ColumnDefinition[]
+  includeSummary?: boolean
+  riskLevel?: 'read' | 'write' | 'critical'
+  confirmMessage?: string
+  rateLimit?: string
+  sensitiveParams?: string[]
   examples?: string[]
-  response_type?: 'text' | 'table' | 'raw' | 'summary'
-  // TODO(roadmap): 'chart' | 'auto' response types planned for v1.5
-  /** When true on a `response_type: table` tool, adds an LLM-generated summary string
-   *  to the AIETableResponse. Ignored for other response types. */
-  include_summary?: boolean
-  risk_level?: 'read' | 'write' | 'critical'
-  confirm_message?: string
-  rate_limit?: string
-  sensitive_params?: string[]
-}
-
-export interface ParamDefinition {
-  description: string
-  type?: string
-  required?: boolean
-  default?: unknown
-  enum?: string[]
-  map_from?: string
+  shortDescription?: string
 }
 
 export interface ResponseMapping {
-  data_path?: string
-  total_path?: string
+  dataPath?: string
+  totalPath?: string
 }
 
 export interface ColumnDefinition {
@@ -46,16 +32,6 @@ export interface ColumnDefinition {
 }
 
 // ── AIE 응답 타입 ──
-
-export type AIEResponse =
-  | AIETextResponse
-  | AIETableResponse
-  | AIERawResponse
-  | AIESummaryResponse
-  | AIEActionResponse
-  | AIEConfirmResponse
-  | AIEClarifyResponse
-  | AIEErrorResponse
 
 export interface AIETextResponse {
   type: 'text'
@@ -109,6 +85,22 @@ export interface AIEErrorResponse {
   code: string
 }
 
+export interface AIEMultiResponse {
+  type: 'multi'
+  results: Exclude<AIEResponse, AIEMultiResponse>[]
+}
+
+export type AIEResponse =
+  | AIETextResponse
+  | AIETableResponse
+  | AIERawResponse
+  | AIESummaryResponse
+  | AIEActionResponse
+  | AIEConfirmResponse
+  | AIEClarifyResponse
+  | AIEErrorResponse
+  | AIEMultiResponse
+
 // ── LLM Provider 타입 ──
 
 export interface ChatMessage {
@@ -128,7 +120,7 @@ export interface LLMToolCallResult {
 }
 
 export interface LLMResponse {
-  toolCall: LLMToolCallResult | null
+  toolCalls: LLMToolCallResult[]
   textContent: string | null
   tokensIn: number
   tokensOut: number
@@ -149,7 +141,7 @@ export interface MessagesConfig {
 }
 
 export interface AIEngineConfig {
-  tools: string
+  tools: ToolDefinition[]
   domainDocs?: string
   /** Optional. Defaults to `{ provider: 'claude' }`, which lets the Anthropic SDK pick up
    *  ANTHROPIC_API_KEY from the environment. Override for OpenAI-compatible / custom providers. */
@@ -160,7 +152,6 @@ export interface AIEngineConfig {
   history?: HistoryConfig
   messages?: MessagesConfig
   executor?: ExecutorConfig
-  hotReload?: HotReloadConfig
   routing?: RoutingConfig
   observability?: ObservabilityConfig
   /** When true, the engine registers SIGTERM and SIGINT handlers that call dispose() automatically.
@@ -184,13 +175,6 @@ export interface RoutingConfig {
   strategy?: 'auto' | 'single' | 'two-stage'
   /** Tool-count threshold at which 'auto' switches from 'single' to 'two-stage'. Default 30. */
   twoStageThreshold?: number
-}
-
-export interface HotReloadConfig {
-  /** Poll interval in ms for tools.yaml mtime changes. Default 0 (disabled).
-   *  Set e.g. 5000 to auto-reload every 5s when the file mtime changes.
-   *  engine.reload() works regardless of this setting. */
-  pollIntervalMs?: number
 }
 
 export interface ExecutorConfig {
