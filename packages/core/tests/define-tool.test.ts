@@ -59,4 +59,32 @@ describe('defineTool semantic checks', () => {
       params: { id: 'string' },
     })).toThrow(/zod ZodObject/)
   })
+
+  it('throws on path-param endpoint with no params schema at all (path-key-mismatch)', () => {
+    expect(() => defineTool({
+      name: 'get_user',
+      description: 'get',
+      endpoint: 'GET /users/:id',
+    })).toThrow(/path-key-mismatch.*no params schema was provided/)
+  })
+
+  it('accepts summary tool when columns are provided', () => {
+    expect(() => defineTool({
+      name: 'list_users',
+      description: 'List',
+      endpoint: 'GET /users',
+      responseType: 'summary',
+      columns: [{ key: 'id', label: 'ID' }],
+    })).not.toThrow()
+  })
+
+  it('accepts summary tool when responseMapping.dataPath is provided', () => {
+    expect(() => defineTool({
+      name: 'list_users',
+      description: 'List',
+      endpoint: 'GET /users',
+      responseType: 'summary',
+      responseMapping: { dataPath: 'data.users' },
+    })).not.toThrow()
+  })
 })

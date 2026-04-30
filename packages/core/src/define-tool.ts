@@ -1,9 +1,13 @@
 import { ZodObject } from 'zod'
+import type { ZodRawShape } from 'zod'
 import type { ToolDefinition } from './types.js'
 
+// Matches standard REST path params: :id, :userId, :_private, :item123.
+// Intentionally excludes $-prefixed identifiers — they are valid TS identifiers
+// but virtually never appear as REST path segments.
 const PATH_PARAM_RE = /:([a-zA-Z_][a-zA-Z0-9_]*)/g
 
-export function defineTool<T extends Record<string, import('zod').ZodTypeAny>>(
+export function defineTool<T extends ZodRawShape>(
   def: ToolDefinition<T>,
 ): ToolDefinition<T> {
   validateDefinition(def)
@@ -22,7 +26,12 @@ export function validateDefinition(def: ToolDefinition): void {
   const path = def.endpoint.split(' ').slice(1).join(' ')
   const pathKeys = Array.from(path.matchAll(PATH_PARAM_RE)).map(m => m[1])
   if (pathKeys.length > 0) {
-    const shape = def.params?.shape ?? {}
+    if (def.params === undefined) {
+      throw new Error(
+        `[aiglue] tool "${def.name}": path-key-mismatch — endpoint has path params (${pathKeys.map(k => `:${k}`).join(', ')}) but no params schema was provided`,
+      )
+    }
+    const shape = def.params.shape
     for (const key of pathKeys) {
       if (!(key in shape)) {
         throw new Error(
