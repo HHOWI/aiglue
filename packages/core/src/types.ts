@@ -1,4 +1,4 @@
-// ── tools.yaml 스펙 타입 ──
+// ── Tool definition and engine types ──
 
 import type { ZodObject, ZodRawShape } from 'zod'
 
