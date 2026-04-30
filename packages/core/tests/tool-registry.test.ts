@@ -43,4 +43,43 @@ describe('ToolRegistry.fromTools', () => {
       examples: ['show users', 'list everyone'],
     })
   })
+
+  it('getTool returns the definition or undefined', () => {
+    const reg = ToolRegistry.fromTools([listUsers])
+    expect(reg.getTool('list_users')).toBe(listUsers)
+    expect(reg.getTool('missing')).toBeUndefined()
+  })
+
+  it('getAllTools returns all stored definitions in insertion order', () => {
+    const a = defineTool({ name: 'a', description: 'a', endpoint: 'GET /a' })
+    const b = defineTool({ name: 'b', description: 'b', endpoint: 'GET /b' })
+    const reg = ToolRegistry.fromTools([a, b])
+    expect(reg.getAllTools()).toEqual([a, b])
+  })
+
+  it('toLLMToolsSubset filters to the requested names', () => {
+    const a = defineTool({ name: 'a', description: 'a', endpoint: 'GET /a' })
+    const b = defineTool({ name: 'b', description: 'b', endpoint: 'GET /b' })
+    const reg = ToolRegistry.fromTools([a, b])
+    const subset = reg.toLLMToolsSubset(['a'])
+    expect(subset).toHaveLength(1)
+    expect(subset[0].name).toBe('a')
+  })
+
+  it('toLLMTools and toIndex return the cached reference on repeat calls', () => {
+    const reg = ToolRegistry.fromTools([listUsers])
+    expect(reg.toLLMTools()).toBe(reg.toLLMTools())
+    expect(reg.toIndex()).toBe(reg.toIndex())
+  })
+
+  it('parseEndpoint splits METHOD and path', () => {
+    const reg = ToolRegistry.fromTools([listUsers])
+    expect(reg.parseEndpoint('GET /users/:id')).toEqual({ method: 'GET', path: '/users/:id' })
+    expect(reg.parseEndpoint('post /a')).toEqual({ method: 'POST', path: '/a' })
+  })
+
+  it('parseEndpoint throws on missing method', () => {
+    const reg = ToolRegistry.fromTools([listUsers])
+    expect(() => reg.parseEndpoint('/users/:id')).toThrow(/Invalid endpoint format/)
+  })
 })

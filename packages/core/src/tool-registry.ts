@@ -78,8 +78,8 @@ export class ToolRegistry {
       if (tool.examples && tool.examples.length > 0) {
         description += `\n\nExample queries: ${tool.examples.join(', ')}`
       }
-      const parameters = tool.params
-        ? (zodToJsonSchema(tool.params, { target: 'openApi3', $refStrategy: 'none' }) as Record<string, unknown>)
+      const parameters: Record<string, unknown> = tool.params
+        ? (zodToJsonSchema(tool.params, { target: 'openApi3', $refStrategy: 'none' }) as { type: 'object'; properties: Record<string, unknown> })
         : { type: 'object', properties: {} }
       return { name: tool.name, description, parameters }
     })
