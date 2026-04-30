@@ -59,7 +59,7 @@ describe('OpenAIProvider', () => {
     ).toThrow(/model/)
   })
 
-  it('parses tool_calls into toolCall with JSON-decoded params', async () => {
+  it('parses tool_calls into toolCalls[] with JSON-decoded params', async () => {
     const server = await startMockServer({
       id: 'chatcmpl-1',
       object: 'chat.completion',
@@ -94,13 +94,62 @@ describe('OpenAIProvider', () => {
       [basicTool],
     )
 
-    expect(result.toolCall).toEqual({
+    expect(result.toolCalls).toHaveLength(1)
+    expect(result.toolCalls[0]).toEqual({
       toolName: 'get_posts',
       params: { userId: 1 },
     })
     expect(result.textContent).toBeNull()
     expect(result.tokensIn).toBe(42)
     expect(result.tokensOut).toBe(8)
+
+    await server.close()
+  })
+
+  it('returns multiple toolCalls when openai emits parallel tool_calls', async () => {
+    const server = await startMockServer({
+      id: 'chatcmpl-2',
+      object: 'chat.completion',
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                id: 'call_a',
+                type: 'function',
+                function: { name: 'a', arguments: '{"x":1}' },
+              },
+              {
+                id: 'call_b',
+                type: 'function',
+                function: { name: 'b', arguments: '{}' },
+              },
+            ],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+      usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+    })
+
+    const provider = new OpenAIProvider({
+      apiKey: 'test',
+      model: 'gpt-4o-mini',
+      baseUrl: server.url,
+    })
+
+    const result = await provider.resolve(
+      [{ role: 'user', content: '...' }],
+      [basicTool],
+    )
+
+    expect(result.toolCalls).toHaveLength(2)
+    expect(result.toolCalls[0]).toEqual({ toolName: 'a', params: { x: 1 } })
+    expect(result.toolCalls[1]).toEqual({ toolName: 'b', params: {} })
+    expect(result.textContent).toBeNull()
 
     await server.close()
   })
@@ -124,7 +173,7 @@ describe('OpenAIProvider', () => {
       [{ role: 'user', content: 'hi' }],
       [basicTool],
     )
-    expect(result.toolCall).toBeNull()
+    expect(result.toolCalls).toHaveLength(0)
     expect(result.textContent).toBe('Hello there')
     await server.close()
   })

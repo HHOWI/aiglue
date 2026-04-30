@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import type { LLMProvider, ChatOptions, ChatResponse } from './types.js'
-import type { ChatMessage, LLMToolDefinition, LLMResponse } from '../types.js'
+import type { ChatMessage, LLMToolDefinition, LLMResponse, LLMToolCallResult } from '../types.js'
 
 export interface OpenAIProviderConfig {
   apiKey?: string
@@ -60,30 +60,36 @@ export class OpenAIProvider implements LLMProvider {
     })
 
     const message = response.choices[0]?.message
-    let toolCall: LLMResponse['toolCall'] = null
+    const toolCalls: LLMToolCallResult[] = []
     let textContent: string | null = null
 
-    const toolCalls = message?.tool_calls
-    if (toolCalls && toolCalls.length > 0 && toolCalls[0].type === 'function') {
-      const call = toolCalls[0]
-      let params: Record<string, unknown> = {}
-      try {
-        params = JSON.parse(call.function.arguments) as Record<string, unknown>
-      } catch {
-        throw new Error(
-          `Failed to parse tool_calls arguments as JSON: ${call.function.arguments}`,
-        )
+    if (message?.tool_calls) {
+      for (const tc of message.tool_calls) {
+        if (tc.type === 'function') {
+          let params: Record<string, unknown> = {}
+          if (tc.function.arguments) {
+            try {
+              params = JSON.parse(tc.function.arguments) as Record<string, unknown>
+            } catch {
+              throw new Error(
+                `Failed to parse tool_calls arguments as JSON: ${tc.function.arguments}`,
+              )
+            }
+          }
+          toolCalls.push({
+            toolName: tc.function.name,
+            params,
+          })
+        }
       }
-      toolCall = {
-        toolName: call.function.name,
-        params,
-      }
-    } else if (message?.content) {
+    }
+
+    if (message?.content) {
       textContent = message.content
     }
 
     return {
-      toolCall,
+      toolCalls,
       textContent,
       tokensIn: response.usage?.prompt_tokens ?? 0,
       tokensOut: response.usage?.completion_tokens ?? 0,
