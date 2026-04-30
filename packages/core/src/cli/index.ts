@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { runLint } from './lint.js'
 import { runInit } from './init.js'
 import { runMCP } from './mcp.js'
 import { runGenerateMCP } from './generate-mcp.js'
@@ -16,9 +15,8 @@ async function main(): Promise<void> {
       'aiglue <subcommand> [options]\n' +
       '\n' +
       'subcommands:\n' +
-      '  lint <file>                       Validate tools.yaml against schema and semantic rules\n' +
-      '  init [--swagger <path-or-url>]    Install IDE AI assets and a tools.yaml (skeleton or generated from OpenAPI 3)\n' +
-      '  mcp serve                         Expose tools.yaml as an MCP server over stdio\n' +
+      '  init [--swagger <path-or-url>]    Install IDE AI assets and a tools.ts (skeleton or generated from OpenAPI 3)\n' +
+      '  mcp serve                         Expose tools.ts as an MCP server over stdio\n' +
       '  generate-mcp                      Emit a self-contained Claude Desktop / Cursor / Cline install bundle\n',
     )
     process.exit(0)
@@ -26,9 +24,6 @@ async function main(): Promise<void> {
 
   let code: number
   switch (subcommand) {
-    case 'lint':
-      code = await runLint(rest, io)
-      break
     case 'init':
       code = await runInit(rest, io)
       break

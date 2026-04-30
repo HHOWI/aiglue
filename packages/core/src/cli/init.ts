@@ -2,7 +2,7 @@ import { mkdir, copyFile, stat, writeFile } from 'fs/promises'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { stringify } from 'yaml'
-import type { CliIO } from './lint.js'
+import type { CliIO } from './types.js'
 import { loadOpenAPI } from '../openapi/load.js'
 import { convertOpenAPIToTools } from '../openapi/convert.js'
 

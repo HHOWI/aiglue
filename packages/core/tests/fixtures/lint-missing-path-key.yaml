@@ -1,8 +1,0 @@
-tools_yaml_version: "1.0"
-tools:
-  - name: get_user
-    description: "특정 사용자를 조회한다"
-    endpoint: GET /api/users/:id
-    params: {}
-    response_type: text
-    risk_level: read

@@ -3,7 +3,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { createMCPServer } from '../mcp/server.js'
-import type { CliIO } from './lint.js'
+import type { CliIO } from './types.js'
 
 interface ServeOptions {
   toolsPath: string

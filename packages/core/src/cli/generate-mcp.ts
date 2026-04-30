@@ -1,6 +1,6 @@
 import { mkdir, copyFile, stat, writeFile } from 'fs/promises'
 import { dirname, resolve } from 'path'
-import type { CliIO } from './lint.js'
+import type { CliIO } from './types.js'
 
 interface GenerateOptions {
   toolsPath: string
