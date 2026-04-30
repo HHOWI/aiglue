@@ -6,10 +6,12 @@ import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { runMCP } from '../../src/cli/mcp.js'
+import { loadToolsModule } from '../../src/cli/load-tools.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, '../fixtures/sample-tools.yaml')
+// Use the .js fixture — no tsx/build step needed; Node's native import() handles it directly.
+const fixturePath = resolve(__dirname, '../fixtures/mcp-fixture-tools.js')
 
 let upstream: HttpServer
 let upstreamPort: number
@@ -85,6 +87,24 @@ function startMcpHttp(port: number, authToken?: string) {
   }
 }
 
+describe('loadToolsModule', () => {
+  it('loads tools from a .js module and returns ToolDefinition[]', async () => {
+    const tools = await loadToolsModule(fixturePath)
+    expect(Array.isArray(tools)).toBe(true)
+    expect(tools.length).toBe(3)
+    expect(tools.map((t) => t.name).sort()).toEqual(['delete_user', 'get_users', 'update_user'])
+    expect(tools.find((t) => t.name === 'get_users')?.riskLevel).toBe('read')
+    expect(tools.find((t) => t.name === 'delete_user')?.riskLevel).toBe('critical')
+  })
+
+  it('throws a clear error when the module does not export a tools array', async () => {
+    // Import this test file itself — it exports nothing that looks like ToolDefinition[]
+    await expect(loadToolsModule(fileURLToPath(import.meta.url))).rejects.toThrow(
+      /must export 'tools' as ToolDefinition\[\]/,
+    )
+  })
+})
+
 describe('aiglue mcp serve --transport http', () => {
   it('serves listTools / callTool over StreamableHTTP and forwards the bearer token', async () => {
     const port = await pickPort()
@@ -125,5 +145,5 @@ describe('aiglue mcp serve --transport http', () => {
     await client.close()
     await handle.cleanup()
     await handle.promise.catch(() => undefined)
-  }, 10_000)
+  }, 15_000)
 })

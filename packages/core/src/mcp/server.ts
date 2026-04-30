@@ -11,8 +11,15 @@ import { Executor } from '../executor.js'
 import type { ToolDefinition } from '../types.js'
 
 export interface MCPServerConfig {
-  /** Path to the tools.yaml file. */
-  toolsPath: string
+  /** Pre-loaded tool definitions. Use this instead of toolsPath when you have already loaded
+   *  the module (e.g. via loadToolsModule). One of tools or toolsPath is required. */
+  tools?: ToolDefinition[]
+  /**
+   * @deprecated Pass pre-loaded `tools` instead. toolsPath is kept for back-compat but
+   * requires ToolRegistry.fromFile which was removed — callers must load via loadToolsModule.
+   * This field is unused internally; the CLI loads tools before calling createMCPServer.
+   */
+  toolsPath?: string
   /** Base URL the executor uses to reach the upstream API. */
   baseUrl: string
   /** Bearer token forwarded as Authorization header on every upstream call. Optional. */
@@ -29,7 +36,7 @@ export interface MCPServerConfig {
 /** Risk-level prefix added to the LLM-visible description. Lets the host (Claude Desktop, etc.) decide
  *  whether to surface its own confirm UI before invoking a write/critical tool. */
 function riskPrefix(tool: ToolDefinition): string {
-  const level = tool.risk_level ?? 'read'
+  const level = tool.riskLevel ?? 'read'
   if (level === 'read') return ''
   if (level === 'write') return '[WRITE OPERATION] '
   return '[CRITICAL OPERATION — IRREVERSIBLE] '
@@ -68,9 +75,12 @@ function toMCPTool(tool: ToolDefinition): Tool {
   }
 }
 
-/** Build an MCP server backed by tools.yaml. The caller wires up the transport (stdio, SSE, …). */
+/** Build an MCP server backed by a pre-loaded tools array. The caller wires up the transport
+ *  (stdio, StreamableHTTP, …). Use `loadToolsModule` from `@hhowi/aiglue-core/cli/load-tools`
+ *  to load a JS/TS module and pass its `tools` export here. */
 export function createMCPServer(config: MCPServerConfig): Server {
-  const registry = ToolRegistry.fromFile(config.toolsPath)
+  const definitions = config.tools ?? []
+  const registry = ToolRegistry.fromTools(definitions)
   const executor = new Executor(
     registry,
     config.baseUrl,

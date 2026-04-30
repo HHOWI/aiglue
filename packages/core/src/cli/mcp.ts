@@ -3,6 +3,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { createMCPServer } from '../mcp/server.js'
+import { loadToolsModule } from './load-tools.js'
 import type { CliIO } from './types.js'
 
 interface ServeOptions {
@@ -69,7 +70,8 @@ function tokenForRequest(req: IncomingMessage, fallback: string | undefined): st
 }
 
 async function serveStdio(opts: ServeOptions): Promise<number> {
-  const server = createMCPServer(opts)
+  const tools = await loadToolsModule(opts.toolsPath)
+  const server = createMCPServer({ ...opts, tools })
   const transport = new StdioServerTransport()
   await server.connect(transport)
   await new Promise<void>((resolveLoop) => {
@@ -79,12 +81,14 @@ async function serveStdio(opts: ServeOptions): Promise<number> {
 }
 
 async function serveHttp(opts: ServeOptions, io: CliIO): Promise<number> {
+  // Load tools once at startup — the tools module is resolved on launch, not per-request.
+  const tools = await loadToolsModule(opts.toolsPath)
   // Stateless mode: each request gets its own server + transport so the per-request bearer token
-  // can flow into Executor.execute() as authToken. Tools.yaml is parsed per request, which is cheap
-  // for small catalogs and avoids cross-tenant state leakage.
+  // can flow into Executor.execute() as authToken. Tools are shared (already loaded) — only the
+  // authToken differs per request so multi-tenant deployments work without cross-tenant state leakage.
   const httpServer = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
     const reqToken = tokenForRequest(req, opts.authToken)
-    const server = createMCPServer({ ...opts, authToken: reqToken })
+    const server = createMCPServer({ ...opts, tools, authToken: reqToken })
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
     try {
       await server.connect(transport)
@@ -124,7 +128,9 @@ export async function runMCP(args: string[], io: CliIO): Promise<number> {
       '  serve    Run an MCP server\n' +
       '\n' +
       'serve options:\n' +
-      '  --tools <path>          Path to tools.yaml (required)\n' +
+      '  --tools <path>          Path to a JS/TS module that exports `tools: ToolDefinition[]` (required)\n' +
+      '                          For .ts files, run via `npx tsx` or pre-build to .js first:\n' +
+      '                            npx tsx $(which aiglue) mcp serve --tools ./tools.ts ...\n' +
       '  --base-url <url>        Upstream API base URL (required)\n' +
       '  --transport <kind>      stdio (default) or http (StreamableHTTP)\n' +
       '  --port <n>              HTTP port (default 3333, ignored for stdio)\n' +

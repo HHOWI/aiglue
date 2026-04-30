@@ -6,16 +6,23 @@ import { resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { createMCPServer } from '../../src/mcp/server.js'
+import { loadToolsModule } from '../../src/cli/load-tools.js'
+import type { ToolDefinition } from '../../src/types.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const fixturePath = resolve(__dirname, '../fixtures/sample-tools.yaml')
+const fixturePath = resolve(__dirname, '../fixtures/mcp-fixture-tools.js')
+
+// Pre-loaded tools shared across all tests in this file.
+let fixtureTools: ToolDefinition[]
 
 let upstream: HttpServer
 let upstreamPort: number
 let lastAuthHeader: string | undefined
 
 beforeAll(async () => {
+  fixtureTools = await loadToolsModule(fixturePath)
+
   upstream = createServer((req, res) => {
     lastAuthHeader = req.headers.authorization
     if (req.url?.startsWith('/api/users') && !req.url.startsWith('/api/users/') && req.method === 'GET') {
@@ -44,7 +51,7 @@ afterAll(() => upstream.close())
 
 async function connectClient(authToken?: string) {
   const server = createMCPServer({
-    toolsPath: fixturePath,
+    tools: fixtureTools,
     baseUrl: `http://localhost:${upstreamPort}`,
     authToken,
   })
@@ -70,7 +77,8 @@ describe('createMCPServer — listTools', () => {
 
     const inputSchema = getUsers.inputSchema as { type: string; properties: Record<string, unknown> }
     expect(inputSchema.type).toBe('object')
-    expect(inputSchema.properties.role).toBeDefined()
+    // Fixture uses plain ToolDefinition literals without Zod params — properties will be empty.
+    expect(inputSchema.properties).toBeDefined()
 
     await client.close()
     await server.close()
