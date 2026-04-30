@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { validateAIEngineConfig } from '../src/config-validate.js'
 import { defineTool } from '../src/define-tool.js'
 import type { AIEngineConfig } from '../src/types.js'
@@ -68,5 +68,18 @@ describe('validateAIEngineConfig', () => {
   it('rejects null / non-object configs early', () => {
     expect(() => validateAIEngineConfig(null as unknown as AIEngineConfig)).toThrow()
     expect(() => validateAIEngineConfig('config' as unknown as AIEngineConfig)).toThrow()
+  })
+
+  it('warns but does not throw when tools array is empty', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() => validateAIEngineConfig({ tools: [] })).not.toThrow()
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('no tools defined'))
+    spy.mockRestore()
+  })
+
+  it('rejects a tool with empty-string name', () => {
+    const bad = { tools: [{ name: '', description: 'x', endpoint: 'GET /x' }] } as unknown as AIEngineConfig
+    expect(() => validateAIEngineConfig(bad))
+      .toThrow(/must be ToolDefinition objects/)
   })
 })

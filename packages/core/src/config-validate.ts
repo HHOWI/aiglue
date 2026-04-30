@@ -52,7 +52,13 @@ export function validateAIEngineConfig(config: AIEngineConfig): void {
     console.warn('[aiglue] no tools defined — engine will respond text-only')
   }
   for (const t of config.tools) {
-    if (!t || typeof t !== 'object' || typeof t.name !== 'string' || typeof t.endpoint !== 'string') {
+    if (
+      !t ||
+      typeof t !== 'object' ||
+      typeof t.name !== 'string' ||
+      t.name === '' ||
+      typeof t.endpoint !== 'string'
+    ) {
       throw new Error('AIEngineConfig.tools[] entries must be ToolDefinition objects (use defineTool())')
     }
   }
