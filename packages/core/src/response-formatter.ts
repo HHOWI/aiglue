@@ -65,7 +65,7 @@ export class ResponseFormatter {
     }
   }
 
-  formatText(apiResponse: unknown): AIETextResponse {
+  private formatText(apiResponse: unknown): AIETextResponse {
     return {
       type: 'text',
       content: typeof apiResponse === 'string'
