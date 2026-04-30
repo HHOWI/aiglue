@@ -53,22 +53,17 @@ export class ClaudeProvider implements LLMProvider {
       tools: anthropicTools,
     })
 
-    let toolCall = null
-    let textContent = null
-
+    const toolCalls: { toolName: string; params: Record<string, unknown> }[] = []
+    let textContent: string | null = null
     for (const block of response.content) {
       if (block.type === 'tool_use') {
-        toolCall = {
-          toolName: block.name,
-          params: block.input as Record<string, unknown>,
-        }
+        toolCalls.push({ toolName: block.name, params: block.input as Record<string, unknown> })
       } else if (block.type === 'text') {
         textContent = block.text
       }
     }
-
     return {
-      toolCall,
+      toolCalls,
       textContent,
       tokensIn: response.usage.input_tokens,
       tokensOut: response.usage.output_tokens,

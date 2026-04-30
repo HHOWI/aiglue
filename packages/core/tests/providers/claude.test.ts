@@ -80,6 +80,42 @@ describe('ClaudeProvider.resolve() — prompt caching', () => {
   })
 })
 
+describe('ClaudeProvider.resolve() — parallel tool_use', () => {
+  it('returns multiple toolCalls when Anthropic emits parallel tool_use blocks', async () => {
+    const stubResponse = {
+      content: [
+        { type: 'tool_use', name: 'list_orders', input: { id: 'C1' } },
+        { type: 'tool_use', name: 'list_inventory', input: {} },
+      ],
+      usage: { input_tokens: 10, output_tokens: 20 },
+    }
+    const provider = new ClaudeProvider('sk-test')
+    ;(provider as unknown as { client: { messages: { create: () => Promise<typeof stubResponse> } } }).client = {
+      messages: { create: async () => stubResponse },
+    }
+
+    const result = await provider.resolve([{ role: 'user', content: 'show both' }], [])
+    expect(result.toolCalls).toHaveLength(2)
+    expect(result.toolCalls[0].toolName).toBe('list_orders')
+    expect(result.toolCalls[1].toolName).toBe('list_inventory')
+  })
+
+  it('returns empty toolCalls array when no tool_use blocks', async () => {
+    const stubResponse = {
+      content: [{ type: 'text', text: 'here is some text' }],
+      usage: { input_tokens: 5, output_tokens: 8 },
+    }
+    const provider = new ClaudeProvider('sk-test')
+    ;(provider as unknown as { client: { messages: { create: () => Promise<typeof stubResponse> } } }).client = {
+      messages: { create: async () => stubResponse },
+    }
+
+    const result = await provider.resolve([{ role: 'user', content: 'hello' }], [])
+    expect(result.toolCalls).toHaveLength(0)
+    expect(result.textContent).toBe('here is some text')
+  })
+})
+
 describe('ClaudeProvider.chat()', () => {
   it('returns text + token usage', async () => {
     const server = await startMockServer({
