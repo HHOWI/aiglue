@@ -95,8 +95,8 @@ export async function runInit(args: string[], io: CliIO): Promise<number> {
       io.stdout(`generated ${config.tools.length} tools from ${swagger}\n`)
     } else {
       await copyIfMissing(
-        resolve(assetsDir, 'tools.skeleton.yaml'),
-        resolve(cwd, 'tools.yaml'),
+        resolve(assetsDir, 'tools.ts'),
+        resolve(cwd, 'tools.ts'),
         force,
         io,
       )

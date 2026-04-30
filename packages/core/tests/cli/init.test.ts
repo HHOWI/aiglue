@@ -28,30 +28,30 @@ function mkIO() {
 }
 
 describe('aiglue init', () => {
-  it('creates tools.yaml, .claude/skills/aiglue.md, .cursor/rules/aiglue.md', async () => {
+  it('creates tools.ts, .claude/skills/aiglue.md, .cursor/rules/aiglue.md', async () => {
     const { io } = mkIO()
     const code = await runInit(['--cwd', work], io)
     expect(code).toBe(0)
-    await expect(stat(join(work, 'tools.yaml'))).resolves.toBeDefined()
+    await expect(stat(join(work, 'tools.ts'))).resolves.toBeDefined()
     await expect(stat(join(work, '.claude/skills/aiglue.md'))).resolves.toBeDefined()
     await expect(stat(join(work, '.cursor/rules/aiglue.md'))).resolves.toBeDefined()
   })
 
-  it('skeleton tools.yaml has tools_yaml_version', async () => {
+  it('skeleton tools.ts has defineTool', async () => {
     const { io } = mkIO()
     await runInit(['--cwd', work], io)
-    const text = await readFile(join(work, 'tools.yaml'), 'utf-8')
-    expect(text).toContain('tools_yaml_version')
+    const text = await readFile(join(work, 'tools.ts'), 'utf-8')
+    expect(text).toContain('defineTool')
   })
 
-  it('does not overwrite existing tools.yaml by default', async () => {
+  it('does not overwrite existing tools.ts by default', async () => {
     const { io, err } = mkIO()
-    const existing = 'existing: content\n'
+    const existing = '// existing content\n'
     const { writeFile } = await import('fs/promises')
-    await writeFile(join(work, 'tools.yaml'), existing, 'utf-8')
+    await writeFile(join(work, 'tools.ts'), existing, 'utf-8')
     const code = await runInit(['--cwd', work], io)
     expect(code).toBe(0)
-    const after = await readFile(join(work, 'tools.yaml'), 'utf-8')
+    const after = await readFile(join(work, 'tools.ts'), 'utf-8')
     expect(after).toBe(existing)
     expect(err.join('')).toContain('skipped')
   })
@@ -59,10 +59,10 @@ describe('aiglue init', () => {
   it('--force overwrites existing files', async () => {
     const { io } = mkIO()
     const { writeFile } = await import('fs/promises')
-    await writeFile(join(work, 'tools.yaml'), 'old\n', 'utf-8')
+    await writeFile(join(work, 'tools.ts'), 'old\n', 'utf-8')
     await runInit(['--cwd', work, '--force'], io)
-    const after = await readFile(join(work, 'tools.yaml'), 'utf-8')
-    expect(after).toContain('tools_yaml_version')
+    const after = await readFile(join(work, 'tools.ts'), 'utf-8')
+    expect(after).toContain('defineTool')
   })
 
   it('--swagger generates tools.yaml from an OpenAPI spec file', async () => {
