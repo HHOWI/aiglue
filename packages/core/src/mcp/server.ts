@@ -6,9 +6,17 @@ import {
   type ListToolsResult,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js'
+import { zodToJsonSchema } from 'zod-to-json-schema'
+import type { ZodSchema } from 'zod/v3'
+import type { ZodObject, ZodRawShape } from 'zod'
 import { ToolRegistry } from '../tool-registry.js'
 import { Executor } from '../executor.js'
 import type { ToolDefinition } from '../types.js'
+
+/** Calls zodToJsonSchema with the zod/v3 ZodSchema type to prevent TS2589. See tool-registry.ts. */
+function paramsToJsonSchema(params: ZodObject<ZodRawShape>): Record<string, unknown> {
+  return zodToJsonSchema(params as unknown as ZodSchema, { target: 'openApi3', $refStrategy: 'none' }) as Record<string, unknown>
+}
 
 export interface MCPServerConfig {
   /** Pre-loaded tool definitions. Use this instead of toolsPath when you have already loaded
@@ -50,28 +58,14 @@ function toMCPTool(tool: ToolDefinition): Tool {
       : ''
   const description = `${riskPrefix(tool)}${baseDescription}${examplesSuffix}`
 
-  const properties: Record<string, Record<string, unknown>> = {}
-  const required: string[] = []
-  if (tool.params) {
-    for (const [paramName, paramDef] of Object.entries(tool.params)) {
-      const prop: Record<string, unknown> = {
-        type: paramDef.type ?? 'string',
-        description: paramDef.description,
-      }
-      if (paramDef.enum) prop.enum = paramDef.enum
-      properties[paramName] = prop
-      if (paramDef.required) required.push(paramName)
-    }
-  }
+  const inputSchema: Record<string, unknown> = tool.params
+    ? paramsToJsonSchema(tool.params)
+    : { type: 'object', properties: {} }
 
   return {
     name: tool.name,
     description,
-    inputSchema: {
-      type: 'object',
-      properties,
-      ...(required.length > 0 ? { required } : {}),
-    },
+    inputSchema: inputSchema as Tool['inputSchema'],
   }
 }
 

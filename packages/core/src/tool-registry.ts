@@ -1,5 +1,15 @@
 import { zodToJsonSchema } from 'zod-to-json-schema'
+// Import ZodSchema from zod/v3 (the exact type zodToJsonSchema expects) to avoid TS2589
+// "type instantiation excessively deep" when passing ZodObject<ZodRawShape> from zod main.
+import type { ZodSchema } from 'zod/v3'
+import type { ZodObject, ZodRawShape } from 'zod'
 import type { ToolDefinition, LLMToolDefinition } from './types.js'
+
+/** Calls zodToJsonSchema, routing through zod/v3's ZodSchema to prevent TS2589 deep instantiation
+ *  that occurs when TypeScript checks ZodObject<ZodRawShape> (main zod) against ZodSchema (zod/v3). */
+function paramsToJsonSchema(params: ZodObject<ZodRawShape>): Record<string, unknown> {
+  return zodToJsonSchema(params as unknown as ZodSchema, { target: 'openApi3', $refStrategy: 'none' }) as Record<string, unknown>
+}
 
 export interface ToolIndexEntry {
   name: string
@@ -78,8 +88,11 @@ export class ToolRegistry {
       if (tool.examples && tool.examples.length > 0) {
         description += `\n\nExample queries: ${tool.examples.join(', ')}`
       }
+      // zodToJsonSchema's conditional return type causes TS2589 when called with a generic
+      // ZodObject<TParams>. We use a typed helper that erases the ZodObject generic before
+      // calling so the return-type instantiation is bounded.
       const parameters: Record<string, unknown> = tool.params
-        ? (zodToJsonSchema(tool.params, { target: 'openApi3', $refStrategy: 'none' }) as { type: 'object'; properties: Record<string, unknown> })
+        ? paramsToJsonSchema(tool.params)
         : { type: 'object', properties: {} }
       return { name: tool.name, description, parameters }
     })

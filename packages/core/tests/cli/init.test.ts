@@ -65,61 +65,10 @@ describe('aiglue init', () => {
     expect(after).toContain('defineTool')
   })
 
-  it('--swagger generates tools.yaml from an OpenAPI spec file', async () => {
-    const { io, out } = mkIO()
-    const { writeFile } = await import('fs/promises')
-    const specPath = join(work, 'openapi.json')
-    await writeFile(
-      specPath,
-      JSON.stringify({
-        openapi: '3.0.0',
-        info: { title: 'Demo', version: '1.0.0' },
-        paths: {
-          '/users': {
-            get: {
-              operationId: 'listUsers',
-              summary: 'List users',
-              responses: {
-                '200': {
-                  description: 'OK',
-                  content: {
-                    'application/json': {
-                      schema: { type: 'array', items: { type: 'object' } },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          '/users/{id}': {
-            delete: {
-              operationId: 'deleteUser',
-              parameters: [
-                { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-              ],
-            },
-          },
-        },
-      }),
-      'utf-8',
-    )
-
-    const code = await runInit(['--cwd', work, '--swagger', specPath], io)
-    expect(code).toBe(0)
-
-    const tools = await readFile(join(work, 'tools.yaml'), 'utf-8')
-    expect(tools).toContain('listusers')
-    expect(tools).toContain('GET /users')
-    expect(tools).toContain('deleteuser')
-    expect(tools).toContain('DELETE /users/:id')
-    expect(tools).toContain('risk_level: critical')
-    expect(out.join('')).toContain('generated 2 tools')
-  })
-
-  it('--swagger reports the source error when the file is missing', async () => {
+  it('--swagger returns exit code 1 with a not-supported-in-v0.4 message', async () => {
     const { io, err } = mkIO()
-    const code = await runInit(['--cwd', work, '--swagger', join(work, 'nope.json')], io)
+    const code = await runInit(['--cwd', work, '--swagger', 'any.json'], io)
     expect(code).toBe(1)
-    expect(err.join('')).toContain('init failed')
+    expect(err.join('')).toContain('not supported in v0.4')
   })
 })
