@@ -2,9 +2,11 @@
 
 [한국어](./README.ko.md) · [![CI](https://github.com/HHOWI/aiglue/actions/workflows/ci.yml/badge.svg)](https://github.com/HHOWI/aiglue/actions/workflows/ci.yml)
 
-**YAML config turns any REST API into an AI-powered natural language interface.**
+> **v0.4 BREAKING — code-first tool definitions.** `tools.yaml` is gone; tools are now TypeScript with zod schemas. Run `npx aiglue migrate tools.yaml` to auto-convert. See [Migrating from v0.3](#migrating-from-v03).
 
-No Swagger needed. No LangChain. No code. Just describe your APIs in `tools.yaml` and get a working AI chatbot in minutes.
+**TypeScript tool definitions turn any REST API into an AI-powered natural language interface.**
+
+No Swagger needed. No LangChain. No code duplication. Define your APIs with `defineTool()` + zod and get a working AI chatbot in minutes.
 
 ```
 "Show me this week's workout logs"
@@ -22,13 +24,13 @@ Every legacy system wants AI. But connecting AI to your existing APIs takes week
 - Vercel AI SDK? Great for chat UI, but you still wire up every API yourself.
 - OpenAI Function Calling? You handle execution, auth, formatting, safety. All of it.
 
-**aiglue does it with a YAML file.**
+**aiglue does it with `defineTool()` + 5 lines of server code.**
 
 ```
 Without aiglue:        With aiglue:
                         
 5-7 weeks              Half a day
-Learn LangChain        Write tools.yaml
+Learn LangChain        Write tools.ts
 Write tool code x45    npm install @hhowi/aiglue-core
 Handle auth            5 lines of server code
 Handle formatting      Done.
@@ -41,66 +43,53 @@ Build chat UI
 ### 1. Install
 
 ```bash
-npm install @hhowi/aiglue-core
-npx aiglue init     # Copies IDE AI skill + rule + tools.yaml skeleton
-
-# Already have an OpenAPI 3 spec? Skip the skeleton and generate tools.yaml from it:
-npx aiglue init --swagger https://api.example.com/openapi.json
-# or a local file:
-npx aiglue init --swagger ./openapi.yaml
+npm install @hhowi/aiglue-core zod
+npx aiglue init     # Copies IDE AI skill + rule + tools.ts skeleton
 ```
 
-After `init`, your IDE AI (Claude Code, Cursor) knows how to edit `tools.yaml` correctly. Run `npx aiglue lint tools.yaml` after edits.
+After `init`, your IDE AI (Claude Code, Cursor) knows how to write `defineTool()` correctly.
 
-### 2. Describe your APIs in `tools.yaml`
+### 2. Define your tools in `tools.ts`
 
-```yaml
-tools_yaml_version: "1.0"
-tools:
-  - name: get_workout_logs
-    description: "Query workout logs. Includes date, exercise, sets, weight."
-    endpoint: GET /api/workouts
-    params:
-      startDate:
-        description: "Start date (YYYY-MM-DD)"
-        type: string
-        required: false
-      bodyPart:
-        description: "Filter by body part (chest, back, legs, shoulders, arms)"
-        type: string
-        required: false
-    response_type: table
-    risk_level: read
-    columns:
-      - { key: "date", label: "Date", type: "date" }
-      - { key: "exercise", label: "Exercise" }
-      - { key: "sets", label: "Sets", type: "number" }
-      - { key: "weight", label: "Weight(kg)", type: "number" }
-    examples:
-      - "Show me this week's workouts"
-      - "Chest exercises last month"
+```ts
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
 
-  - name: create_workout_log
-    description: "Add a new workout log entry."
-    endpoint: POST /api/workouts
-    params:
-      exerciseName:
-        description: "Exercise name (e.g., bench press, squat, deadlift)"
-        type: string
-        required: true
-      weight:
-        description: "Weight in kg"
-        type: number
-        required: true
-      sets:
-        description: "Number of sets"
-        type: number
-        required: true
-    risk_level: write
-    confirm_message: "Add this workout log?"
-    examples:
-      - "Log bench press 80kg 5 sets"
-      - "Add squat 100kg 3 sets 12 reps"
+export const getWorkoutLogs = defineTool({
+  name: 'get_workout_logs',
+  description: 'Query workout logs. Includes date, exercise, sets, weight.',
+  endpoint: 'GET /api/workouts',
+  params: z.object({
+    startDate: z.string().optional().describe('Start date (YYYY-MM-DD)'),
+    bodyPart: z.string().optional()
+      .describe('Filter by body part (chest, back, legs, shoulders, arms)'),
+  }),
+  responseType: 'table',
+  riskLevel: 'read',
+  columns: [
+    { key: 'date', label: 'Date', type: 'date' },
+    { key: 'exercise', label: 'Exercise' },
+    { key: 'sets', label: 'Sets', type: 'number' },
+    { key: 'weight', label: 'Weight(kg)', type: 'number' },
+  ],
+  examples: ["Show me this week's workouts", 'Chest exercises last month'],
+})
+
+export const createWorkoutLog = defineTool({
+  name: 'create_workout_log',
+  description: 'Add a new workout log entry.',
+  endpoint: 'POST /api/workouts',
+  params: z.object({
+    exerciseName: z.string().describe('Exercise name (e.g., bench press, squat, deadlift)'),
+    weight: z.number().describe('Weight in kg'),
+    sets: z.number().describe('Number of sets'),
+  }),
+  riskLevel: 'write',
+  confirmMessage: 'Add this workout log?',
+  examples: ['Log bench press 80kg 5 sets', 'Add squat 100kg 3 sets'],
+})
+
+export const tools = [getWorkoutLogs, createWorkoutLog]
 ```
 
 ### 3. Add 5 lines to your server
@@ -108,12 +97,13 @@ tools:
 ```ts
 import express from 'express'
 import { createAIEngine } from '@hhowi/aiglue-core'
+import { tools } from './tools.js'
 
 const app = express()
 app.use(express.json())
 
 const engine = createAIEngine({
-  tools: './tools.yaml',
+  tools,
   llm: { provider: 'claude', apiKey: process.env.ANTHROPIC_API_KEY },
   baseUrl: 'http://localhost:3000', // your existing API server
 })
@@ -155,7 +145,7 @@ For React projects, [`@hhowi/aiglue-client`](./packages/client/) wraps the boile
 import { useAIGlue } from '@hhowi/aiglue-client'
 
 const { send, sendConfirm, result, loading } = useAIGlue({ endpoint: '/ai/chat' })
-// result.type → 'text' | 'table' | 'summary' | 'action' | 'confirm' | 'error' | …
+// result.type → 'text' | 'table' | 'summary' | 'action' | 'confirm' | 'multi' | 'error' | …
 // sendConfirm() echoes the confirmToken from the last confirm response automatically.
 ```
 
@@ -185,10 +175,10 @@ User: "Show me this week's chest workouts"
   |
   v
 [aiglue]
-  1. Parses tools.yaml -> knows what APIs exist
+  1. Loads tool definitions from your tools.ts array
   2. Sends tool list + user message to LLM (Claude/GPT/Ollama)
   3. LLM decides: get_workout_logs { bodyPart: "chest", startDate: "2026-04-10" }
-  4. Safety check: risk_level is "read" -> execute immediately
+  4. Safety check: riskLevel is "read" -> execute immediately
   5. Calls: GET /api/workouts?bodyPart=chest&startDate=2026-04-10
   6. Formats response using columns definition
   7. Returns structured JSON to your frontend
@@ -208,19 +198,37 @@ aiglue: { "type": "action", "status": "success", "message": "Done." }
 
 ## Features
 
-### Zero-Code Tool Definition
+### Type-Safe Tool Definition
 
-Describe your APIs in YAML. No Python classes, no JavaScript functions, no code at all.
+Define your APIs in TypeScript with zod schemas. Full type inference, IDE autocomplete, and runtime validation — no separate schema files needed.
+
+```ts
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
+
+const getUser = defineTool({
+  name: 'get_user',
+  description: 'Fetch a user profile by ID.',
+  endpoint: 'GET /api/users/:id',
+  params: z.object({
+    id: z.string().describe('User ID'),
+  }),
+  responseType: 'text',
+  riskLevel: 'read',
+})
+```
+
+`defineTool()` validates the definition at construction time (path params, confirm message requirements, column requirements) so you catch mistakes before deployment.
 
 ### Safety Built-In
 
-```yaml
-risk_level: read      # Execute immediately
-risk_level: write     # Ask user for confirmation first
-risk_level: critical  # Confirm + require reason
+```ts
+riskLevel: 'read'      // Execute immediately
+riskLevel: 'write'     // Ask user for confirmation first
+riskLevel: 'critical'  // Confirm + require reason
 ```
 
-Only tools defined in `tools.yaml` can be called. Everything else is rejected (whitelist, not blacklist).
+Only tools you pass to `createAIEngine({ tools })` can be called. Everything else is rejected (whitelist, not blacklist).
 
 ### Auth Relay
 
@@ -326,7 +334,7 @@ const engine = createAIEngine({
   rateLimiting: { global: '60/min', perUser: '20/min' },
 })
 
-// Stop background timers (rate-limiter sweep, hot-reload poller) on shutdown.
+// Stop background timers (rate-limiter sweep) on shutdown.
 process.on('SIGTERM', () => engine.dispose())
 ```
 
@@ -346,22 +354,21 @@ User-facing errors stay generic (`messages.internalError` / `messages.upstreamEr
 
 Within a 5-minute TTL the same key returns the cached response — for success and deterministic 4xx (e.g., not found, validation failure). Transient 5xx is **not** cached, so a retry with the same key can succeed once the upstream recovers. Use a fresh key per logical confirm round-trip.
 
-#### Hot reload
+#### Parallel tool use
 
-Pick up `tools.yaml` edits without restarting the process:
+When you ask a compound question ("Show me sales and inventory"), the LLM may call two or more `riskLevel: 'read'` tools in the same turn. aiglue runs them concurrently and returns an `AIEMultiResponse`:
 
-```ts
-const engine = createAIEngine({
-  tools: './tools.yaml',
-  hotReload: { pollIntervalMs: 5_000 },  // mtime check; default 0 (disabled)
-})
-
-// Or trigger explicitly (SIGHUP handler, configmap watcher, deploy hook):
-const result = await engine.reload()
-if (!result.ok) console.error('reload failed:', result.error)
+```json
+{
+  "type": "multi",
+  "results": [
+    { "type": "table", "columns": [...], "rows": [...] },
+    { "type": "table", "columns": [...], "rows": [...] }
+  ]
+}
 ```
 
-Reload is atomic — parse / validation failures leave the existing registry intact.
+Write and critical tools are never parallelised — they require a dedicated confirm turn.
 
 #### Observability (OpenTelemetry tracing)
 
@@ -386,7 +393,7 @@ Each span is tagged with `aiglue.tool_name`, `aiglue.risk_level`, `aiglue.respon
 | **OpenAI-compatible** (OpenAI, Groq, Together AI, etc.) | No explicit markers. The provider's own automatic prefix caching kicks in for prefixes ≥ 1024 tokens. | Provider-defined (OpenAI: 5–10 min idle) | 50% on OpenAI; varies elsewhere |
 | **Local runners** (Ollama, vLLM, llama.cpp, …) | No caching layer. Re-evaluates the full prompt every call. | n/a | n/a |
 
-Both API-hosted paths benefit from keeping `tools.yaml` and the system prompt stable — every change invalidates the cached prefix. For larger catalogs (~50+ tools) where caching alone is not enough, see the design spec at `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`.
+Both API-hosted paths benefit from keeping the tool definitions and the system prompt stable — every change invalidates the cached prefix. For larger catalogs (~50+ tools) where caching alone is not enough, see the design spec at `docs/superpowers/specs/2026-04-28-tool-index-routing-design.md`.
 
 ### Headless (No UI Opinion)
 
@@ -401,15 +408,16 @@ aiglue returns structured JSON. You render it however you want:
 | `action` | Success/failure result |
 | `confirm` | Needs user approval |
 | `clarify` | Needs more info from user |
+| `multi` | Parallel tool calls — array of individual results |
 
 ### MCP Server (Claude Desktop, Cursor, Cline, …)
 
-The same `tools.yaml` that powers your in-app chatbot can also be exposed as an [MCP](https://modelcontextprotocol.io) server. Any MCP-compatible host (Claude Desktop, Cursor, Cline, etc.) can then call your APIs natively — no chat UI to build.
+The same tool definitions that power your in-app chatbot can also be exposed as an [MCP](https://modelcontextprotocol.io) server. Any MCP-compatible host (Claude Desktop, Cursor, Cline, etc.) can then call your APIs natively — no chat UI to build.
 
 ```bash
 AIGLUE_AUTH_TOKEN=your-token \
   npx aiglue mcp serve \
-    --tools ./tools.yaml \
+    --tools ./tools.ts \
     --base-url https://api.your-service.com
 ```
 
@@ -422,7 +430,7 @@ Wire it into Claude Desktop's `claude_desktop_config.json`:
       "command": "npx",
       "args": [
         "aiglue", "mcp", "serve",
-        "--tools", "/abs/path/to/tools.yaml",
+        "--tools", "/abs/path/to/tools.ts",
         "--base-url", "https://internal-api.company.com"
       ],
       "env": { "AIGLUE_AUTH_TOKEN": "your-bearer-token" }
@@ -436,21 +444,48 @@ What you get:
 - **Composability.** Your tools mix freely with filesystem, GitHub, Playwright, and other MCP servers in the same conversation.
 - **Power-user channel.** Technical customers who prefer their own AI client can connect to your MCP endpoint instead of using your built-in chat.
 
-Risk-level safety: tools with `risk_level: write` are prefixed with `[WRITE OPERATION]` in their MCP description, and `critical` tools with `[CRITICAL OPERATION — IRREVERSIBLE]`. The host (e.g., Claude Desktop) surfaces its own confirm UI before invoking them.
+Risk-level safety: tools with `riskLevel: 'write'` are prefixed with `[WRITE OPERATION]` in their MCP description, and `'critical'` tools with `[CRITICAL OPERATION — IRREVERSIBLE]`. The host (e.g., Claude Desktop) surfaces its own confirm UI before invoking them.
 
 Programmatic API for embedding in your own MCP host:
 
 ```ts
 import { createMCPServer } from '@hhowi/aiglue-core'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { tools } from './tools.js'
 
 const server = createMCPServer({
-  toolsPath: './tools.yaml',
+  tools,
   baseUrl: 'https://api.your-service.com',
   authToken: process.env.AIGLUE_AUTH_TOKEN,
 })
 await server.connect(new StdioServerTransport())
 ```
+
+## BFF Pattern — when to add a tool vs a backend endpoint
+
+Each aiglue tool maps to **exactly one HTTP request**. This is intentional: a single tool = a single atomic operation that can be confirmed, retried, and traced cleanly.
+
+When you find yourself wanting to chain multiple tools together in sequence (list orders → extract IDs → send notifications), that is a sign you need a **Backend-for-Frontend (BFF) endpoint** instead.
+
+```
+❌ Bad — three separate tool hops:
+   list_orders  →  (LLM extracts IDs)  →  send_notifications
+
+✅ Good — one BFF endpoint, one tool:
+   POST /ops/customers/:id/send-unpaid-reminder
+   defineTool({ endpoint: 'POST /ops/customers/:id/send-unpaid-reminder', riskLevel: 'write', ... })
+```
+
+**Why BFF?**
+
+- **Transactions:** the backend wraps the whole workflow in one unit of work; rollback is handled server-side, not by the LLM.
+- **Single confirm prompt:** the user sees one confirmation for the whole operation, not one per step.
+- **Testability:** the workflow is a normal HTTP endpoint with a clear contract, independently testable.
+- **Agent compatibility:** aiglue stays a clean, single-call tool surface for agent frameworks (LangGraph, CrewAI, AutoGen) that call it as one tool.
+
+**When parallel tools are fine:** if you just want to fetch two independent read-only datasets in the same turn ("show me sales and inventory"), let the LLM call two `riskLevel: 'read'` tools — aiglue runs them concurrently and returns an `AIEMultiResponse`. No BFF needed for reads.
+
+The rule of thumb: **one tool = one HTTP call = one confirm**. If you need side-effects that span multiple calls, push that logic into your backend.
 
 ## Examples by backend framework
 
@@ -458,142 +493,154 @@ Not using Claude Code or Cursor? Copy one of these starting points and adjust.
 
 ### Express (Node.js)
 
-```yaml
-tools_yaml_version: "1.0"
-tools:
-  - name: list_posts
-    description: "블로그 글 목록 조회"
-    endpoint: GET /api/posts
-    params:
-      authorId:
-        description: "작성자 ID"
-        type: string
-        required: false
-    response_type: table
-    risk_level: read
-    columns:
-      - { key: "id", label: "ID" }
-      - { key: "title", label: "제목" }
-      - { key: "createdAt", label: "작성일", type: "date" }
+```ts
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
 
-  - name: delete_post
-    description: "블로그 글 삭제"
-    endpoint: DELETE /api/posts/:id
-    params:
-      id:
-        description: "글 ID"
-        type: string
-        required: true
-    risk_level: critical
-    confirm_message: "이 글을 삭제합니다. 되돌릴 수 없습니다."
+export const listPosts = defineTool({
+  name: 'list_posts',
+  description: '블로그 글 목록 조회',
+  endpoint: 'GET /api/posts',
+  params: z.object({
+    authorId: z.string().optional().describe('작성자 ID'),
+  }),
+  responseType: 'table',
+  riskLevel: 'read',
+  columns: [
+    { key: 'id', label: 'ID' },
+    { key: 'title', label: '제목' },
+    { key: 'createdAt', label: '작성일', type: 'date' },
+  ],
+})
+
+export const deletePost = defineTool({
+  name: 'delete_post',
+  description: '블로그 글 삭제',
+  endpoint: 'DELETE /api/posts/:id',
+  params: z.object({ id: z.string().describe('글 ID') }),
+  riskLevel: 'critical',
+  confirmMessage: '이 글을 삭제합니다. 되돌릴 수 없습니다.',
+})
+
+export const tools = [listPosts, deletePost]
 ```
 
-### FastAPI (Python)
+### FastAPI (Python — Node.js sidecar)
 
-```yaml
-tools_yaml_version: "1.0"
-tools:
-  - name: query_orders
-    description: "주문 내역 조회. 기간·상태별 필터 가능."
-    endpoint: POST /api/orders/query
-    request_body_template:
-      page: 1
-      pageSize: 50
-    params:
-      status:
-        description: "주문 상태"
-        type: string
-        required: false
-        enum: [pending, paid, shipped, cancelled]
-    response_mapping:
-      data_path: "items"
-      total_path: "total"
-    response_type: table
-    risk_level: read
-    columns:
-      - { key: "orderId", label: "주문번호" }
-      - { key: "status", label: "상태", type: "badge" }
-      - { key: "amount", label: "금액", type: "number" }
+```ts
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
+
+export const queryOrders = defineTool({
+  name: 'query_orders',
+  description: '주문 내역 조회. 기간·상태별 필터 가능.',
+  endpoint: 'POST /api/orders/query',
+  params: z.object({
+    status: z.enum(['pending', 'paid', 'shipped', 'cancelled']).optional()
+      .describe('주문 상태'),
+  }),
+  requestBodyTemplate: { page: 1, pageSize: 50 },
+  responseMapping: { dataPath: 'items', totalPath: 'total' },
+  responseType: 'table',
+  riskLevel: 'read',
+  columns: [
+    { key: 'orderId', label: '주문번호' },
+    { key: 'status', label: '상태', type: 'badge' },
+    { key: 'amount', label: '금액', type: 'number' },
+  ],
+})
+
+export const tools = [queryOrders]
 ```
 
-### Spring (Java)
+### Spring (Java — Node.js sidecar)
 
-```yaml
-tools_yaml_version: "1.0"
-tools:
-  - name: update_user_role
-    description: "사용자 권한 변경"
-    endpoint: PUT /api/users/:userId/role
-    params:
-      userId:
-        description: "사용자 ID"
-        type: string
-        required: true
-      role:
-        description: "부여할 권한"
-        type: string
-        required: true
-        enum: [admin, member, viewer]
-    risk_level: write
-    confirm_message: "사용자 권한을 변경합니다. 계속할까요?"
+```ts
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
+
+export const updateUserRole = defineTool({
+  name: 'update_user_role',
+  description: '사용자 권한 변경',
+  endpoint: 'PUT /api/users/:userId/role',
+  params: z.object({
+    userId: z.string().describe('사용자 ID'),
+    role: z.enum(['admin', 'member', 'viewer']).describe('부여할 권한'),
+  }),
+  riskLevel: 'write',
+  confirmMessage: '사용자 권한을 변경합니다. 계속할까요?',
+})
+
+export const tools = [updateUserRole]
 ```
 
-Use `npx aiglue lint tools.yaml` after editing to catch mistakes.
+## `defineTool()` Reference
 
-## tools.yaml Reference
+```ts
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
 
-```yaml
-tools_yaml_version: "1.0"        # Required
-
-tools:
-  - name: get_something           # Tool identifier
-    description: "..."            # What this API does (LLM reads this)
-    endpoint: GET /api/resource   # HTTP method + path
-    params:                       # Parameters LLM extracts from natural language
-      paramName:
-        description: "..."
-        type: string              # string | number | boolean
-        required: false
-        enum: [a, b, c]          # Allowed values
-        default: "a"
-    request_body_template:        # Default POST body (merged with params)
-      pageNo: 1
-      pageSize: 50
-    response_mapping:             # Extract data from API response
-      data_path: "data.items"
-      total_path: "data.total"
-    columns:                      # Table column definitions
-      - { key: "id", label: "ID" }
-      - { key: "name", label: "Name" }
-    examples:                     # Natural language examples (improves accuracy)
-      - "Show me all items"
-      - "List active users"
-    response_type: table          # text | table | raw | summary
-    include_summary: true         # Only with response_type: table — adds an LLM summary sentence
-    risk_level: read              # read | write | critical
-    sensitive_params: [password, token]  # Log masking: listed params show as [REDACTED]
-    confirm_message: "Proceed?"   # Shown for write/critical
-    rate_limit: "10/min"          # Per-tool rate limit
+defineTool({
+  name: 'get_something',           // Tool identifier — unique across all tools
+  description: '...',              // What this API does (LLM reads this)
+  endpoint: 'GET /api/resource',   // HTTP method + path
+  params: z.object({               // zod schema — LLM extracts from natural language
+    paramName: z.string()
+      .optional()
+      .describe('...')
+      .default('a'),
+    category: z.enum(['a', 'b', 'c']),
+  }),
+  requestBodyTemplate: {           // Default POST body (merged with params)
+    pageNo: 1,
+    pageSize: 50,
+  },
+  responseMapping: {               // Extract data from API response
+    dataPath: 'data.items',
+    totalPath: 'data.total',
+  },
+  columns: [                       // Table column definitions (required for responseType: 'table')
+    { key: 'id', label: 'ID' },
+    { key: 'name', label: 'Name' },
+  ],
+  examples: [                      // Natural language examples (improves LLM accuracy)
+    'Show me all items',
+    'List active users',
+  ],
+  responseType: 'table',           // 'text' | 'table' | 'raw' | 'summary'
+  includeSummary: true,            // Only with responseType: 'table' — adds an LLM summary sentence
+  riskLevel: 'read',               // 'read' | 'write' | 'critical'
+  sensitiveParams: ['password', 'token'],  // Log masking: listed params show as [REDACTED]
+  confirmMessage: 'Proceed?',      // Required for riskLevel: 'write' | 'critical'
+  rateLimit: '10/min',             // Per-tool rate limit
+})
 ```
 
 ### Natural language summaries
 
-Set `response_type: summary` to get an LLM-generated natural-language description of the tool result instead of raw JSON. Combine with a table by adding `include_summary: true`:
+Set `responseType: 'summary'` to get an LLM-generated natural-language description of the tool result instead of raw JSON. Combine with a table by adding `includeSummary: true`:
 
-```yaml
-- name: get_user_info
-  description: "Fetch user profile"
-  endpoint: GET /api/users/:id
-  response_type: summary           # Chatbot-style reply: "Alice is an admin since 2020"
+```ts
+defineTool({
+  name: 'get_user_info',
+  description: 'Fetch user profile',
+  endpoint: 'GET /api/users/:id',
+  params: z.object({ id: z.string() }),
+  responseType: 'summary',           // Chatbot-style reply: "Alice is an admin since 2020"
+  columns: [{ key: 'name', label: 'Name' }],
+})
 
-- name: list_sales
-  description: "Weekly sales"
-  endpoint: GET /api/sales
-  response_type: table
-  include_summary: true            # Table + one-sentence summary
-  columns:
-    - { key: "date", label: "Date" }
-    - { key: "total", label: "Total" }
+defineTool({
+  name: 'list_sales',
+  description: 'Weekly sales',
+  endpoint: 'GET /api/sales',
+  responseType: 'table',
+  includeSummary: true,            // Table + one-sentence summary
+  columns: [
+    { key: 'date', label: 'Date' },
+    { key: 'total', label: 'Total' },
+  ],
+})
 ```
 
 aiglue makes a second LLM call (capped at 300 tokens) to produce the summary. If the call fails, the response degrades to `type: 'text'` (summary-only) or returns the table without the summary field — the request never fails solely because summarization failed.
@@ -614,7 +661,7 @@ aiglue runs as a sidecar process alongside your existing backend:
 
 | | LangChain | Vercel AI SDK | aiglue |
 |---|---|---|---|
-| Tool definition | Code | Code | **YAML** |
+| Tool definition | Code | Code | **`defineTool()` + zod** |
 | API execution | You build it | You build it | **Built-in** |
 | Auth relay | You build it | You build it | **Built-in** |
 | Safety (confirm) | You build it | You build it | **Built-in** |
@@ -622,27 +669,63 @@ aiglue runs as a sidecar process alongside your existing backend:
 | MCP support | Separate | No | **Built-in** |
 | Swagger required | No | No | **No** |
 
+## Migrating from v0.3
+
+v0.3 used `tools.yaml` for tool definitions. v0.4 replaces that with TypeScript + zod (`defineTool()`).
+
+**Auto-convert with the codemod:**
+
+```bash
+npx aiglue migrate tools.yaml
+# writes tools.ts in the same directory
+```
+
+Then update your server:
+
+```ts
+// Before (v0.3):
+const engine = createAIEngine({ tools: './tools.yaml', ... })
+
+// After (v0.4):
+import { tools } from './tools.js'
+const engine = createAIEngine({ tools, ... })
+```
+
+Field names changed from `snake_case` to `camelCase` — the codemod handles this automatically:
+
+| v0.3 (yaml) | v0.4 (TypeScript) |
+|---|---|
+| `risk_level` | `riskLevel` |
+| `response_type` | `responseType` |
+| `confirm_message` | `confirmMessage` |
+| `response_mapping.data_path` | `responseMapping.dataPath` |
+| `include_summary` | `includeSummary` |
+| `sensitive_params` | `sensitiveParams` |
+| `rate_limit` | `rateLimit` |
+
+`aiglue lint` (v0.3 yaml linter) no longer exists. Validation now happens at construction time inside `defineTool()`.
+
 ## Roadmap
 
-- [x] Core Engine (tools.yaml parser, intent resolver, executor)
+- [x] Core Engine (intent resolver, executor, response formatter)
+- [x] `defineTool()` + zod — code-first type-safe tool definitions
 - [x] Claude provider
-- [x] `tools.yaml` JSON Schema (IDE autocomplete, LLM authoring accuracy)
-- [x] `npx aiglue lint` (schema + semantic validation CLI)
-- [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.yaml` skeleton)
+- [x] `npx aiglue init` (Claude skill + Cursor rule + `tools.ts` skeleton)
 - [x] OpenAI-compatible provider (OpenAI, Groq, Together AI, Ollama, LM Studio, LiteLLM, etc.)
-- [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, hot reload, Anthropic prompt caching)
-- [x] `aiglue mcp serve` — expose tools.yaml as an MCP server over stdio (Claude Desktop, Cursor, Cline, …)
+- [x] Production hardening (LLM/HTTP timeouts, response size cap, history token budget, confirm idempotency, Anthropic prompt caching)
+- [x] `aiglue mcp serve` — expose tool definitions as an MCP server over stdio (Claude Desktop, Cursor, Cline, …)
 - [x] `@hhowi/aiglue-client` — headless React hook for `/ai/chat` (auto confirm-token echo, multi-turn history)
 - [x] `@hhowi/aiglue-client-vue` — Vue 3 composable mirror of `@hhowi/aiglue-client`
-- [x] `npx aiglue init --swagger <path-or-url>` — generate `tools.yaml` from an OpenAPI 3.x spec
+- [x] `npx aiglue init --swagger <path-or-url>` — generate `tools.ts` from an OpenAPI 3.x spec
 - [x] `npx aiglue generate-mcp` — emit a self-contained MCP install bundle for distribution
 - [x] `aiglue mcp serve --transport http` — StreamableHTTP transport for centrally hosted MCP servers
 - [x] `AIEClarifyResponse` — engine-emitted clarify questions (with optional answer buttons)
+- [x] `AIEMultiResponse` — parallel read-only tool calls in a single turn
 - [x] Custom `LLMProvider` — bring your own (Bedrock, internal gateway, multi-provider routing, …)
 - [x] Server framework adapters — Express / Fastify / Hono out of the box, `engine.dispatch()` for the rest
-- [x] Zero-config defaults — `createAIEngine({ tools: './tools.yaml' })` works with `ANTHROPIC_API_KEY` env
+- [x] Zero-config defaults — `createAIEngine({ tools })` works with `ANTHROPIC_API_KEY` env
+- [x] `npx aiglue migrate` — codemod to convert v0.3 `tools.yaml` to v0.4 `tools.ts`
 - [ ] Svelte adapter
-- [ ] `npx aiglue init --swagger` (generate tools.yaml from OpenAPI spec)
 
 ## License
 

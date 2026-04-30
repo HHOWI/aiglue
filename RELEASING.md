@@ -46,15 +46,42 @@ The packages live under the maintainer's **personal npm scope** (`@hhowi`) — n
 
    ```bash
    # Use the highest version that shipped — the tag is a release anchor, not a per-package label.
-   git tag v0.3.0
+   git tag v0.4.0
    git push origin main
-   git push origin v0.3.0
+   git push origin v0.4.0
    ```
 
 5. **Watch the workflow.** GitHub → Actions → "Release". On success:
    - npm shows the new versions
    - GitHub Releases gets an auto-generated entry with commit log
    - The published tarball carries [npm provenance](https://docs.npmjs.com/generating-provenance-statements) linking back to this commit
+
+## v0.4 migration note for downstream consumers
+
+v0.4 is a **breaking release**. Consumers upgrading from v0.3 need to convert their `tools.yaml` to TypeScript:
+
+```bash
+npx aiglue migrate tools.yaml        # generates tools.ts in the same directory
+```
+
+Then update the engine instantiation:
+
+```ts
+// Before (v0.3):
+const engine = createAIEngine({ tools: './tools.yaml', ... })
+
+// After (v0.4):
+import { tools } from './tools.js'
+const engine = createAIEngine({ tools, ... })
+```
+
+Key changes to communicate in the release notes:
+- `tools.yaml` removed; replaced by `defineTool()` + zod in TypeScript.
+- All tool field names changed from `snake_case` to `camelCase` (`risk_level` → `riskLevel`, `response_type` → `responseType`, etc.).
+- `aiglue lint` CLI removed (yaml linter — no longer applicable).
+- Hot reload (`config.hotReload`, `engine.reload()`) removed — tools are static at process start.
+- New: `AIEMultiResponse` for parallel read-only tool calls.
+- New: `npx aiglue migrate <yaml>` codemod.
 
 ## Pre-release / canary channels
 
@@ -81,7 +108,7 @@ Each `pnpm publish` will prompt for the npm 2FA OTP. Re-run any package that fai
 `npm unpublish` is allowed within 24 hours of publish. After that, deprecate instead:
 
 ```bash
-npm deprecate @hhowi/aiglue-core@0.3.0 "Critical bug; use 0.3.1+"
+npm deprecate @hhowi/aiglue-core@0.4.0 "Critical bug; use 0.4.1+"
 ```
 
 `npm install` still works for the version (existing pinned deployments do not break) but new installs see the warning.
