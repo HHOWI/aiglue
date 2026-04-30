@@ -198,4 +198,11 @@ describe('ResponseFormatter', () => {
       expect(stringResult.data).toBe('hello')
     }
   })
+
+  it('formatMulti wraps an array of responses', () => {
+    const r1 = formatter.formatText('a')
+    const r2 = formatter.formatText('b')
+    const multi = formatter.formatMulti([r1, r2])
+    expect(multi).toEqual({ type: 'multi', results: [r1, r2] })
+  })
 })

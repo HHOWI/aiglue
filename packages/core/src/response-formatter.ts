@@ -4,6 +4,7 @@ import type {
   AIETextResponse,
   AIETableResponse,
   AIERawResponse,
+  AIEMultiResponse,
 } from './types.js'
 
 export class ResponseFormatter {
@@ -64,7 +65,7 @@ export class ResponseFormatter {
     }
   }
 
-  private formatText(apiResponse: unknown): AIETextResponse {
+  formatText(apiResponse: unknown): AIETextResponse {
     return {
       type: 'text',
       content: typeof apiResponse === 'string'
@@ -115,5 +116,9 @@ export class ResponseFormatter {
       question,
       ...(cleaned.length > 0 ? { options: cleaned } : {}),
     }
+  }
+
+  formatMulti(results: Exclude<AIEResponse, AIEMultiResponse>[]): AIEMultiResponse {
+    return { type: 'multi', results }
   }
 }

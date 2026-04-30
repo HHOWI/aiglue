@@ -78,6 +78,14 @@ export class IntentResolver {
     // Always make the clarify meta tool available — the engine intercepts it before safety/executor.
     const tools = [...baseTools, CLARIFY_TOOL_DEF]
 
-    return this.provider.resolve(messages, tools)
+    const response = await this.provider.resolve(messages, tools)
+
+    // If the first tool call is the clarify meta tool, suppress any parallel sibling calls.
+    // The engine will intercept the clarify call before SafetyGate/Executor.
+    if (response.toolCalls.length > 1 && response.toolCalls[0].toolName === CLARIFY_META_TOOL) {
+      return { ...response, toolCalls: [response.toolCalls[0]] }
+    }
+
+    return response
   }
 }
