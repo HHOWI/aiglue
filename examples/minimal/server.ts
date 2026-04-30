@@ -1,17 +1,18 @@
 import express from 'express'
 import { createAIEngine } from '@hhowi/aiglue-core'
+import { tools } from './src/tools.js'
 
 const app = express()
 app.use(express.json())
 
 const engine = createAIEngine({
-  tools: './tools.yaml',
+  tools,
+  baseUrl: 'https://jsonplaceholder.typicode.com',
   llm: {
     provider: 'claude',
     apiKey: process.env.ANTHROPIC_API_KEY ?? '',
     timeoutMs: 30_000,
   },
-  baseUrl: 'https://jsonplaceholder.typicode.com',
   executor: {
     timeoutMs: 10_000,
     maxResponseBytes: 5 * 1024 * 1024,
@@ -21,8 +22,6 @@ const engine = createAIEngine({
     maxTokens: 4000,
   },
   rateLimiting: { global: '60/min', perUser: '20/min' },
-  // Pick up tools.yaml edits without restarting the process. Pass 0 (or omit) to disable.
-  hotReload: { pollIntervalMs: 5_000 },
 })
 
 // Single endpoint. The handler routes message vs. confirm submissions internally —
