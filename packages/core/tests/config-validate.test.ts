@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { validateAIEngineConfig } from '../src/config-validate.js'
+import { defineTool } from '../src/define-tool.js'
 import type { AIEngineConfig } from '../src/types.js'
 
+const tool = defineTool({ name: 'a', description: 'a', endpoint: 'GET /a' })
+
 const valid: AIEngineConfig = {
-  tools: 'tools.yaml',
+  tools: [tool],
   llm: { provider: 'claude', apiKey: 'k' },
 }
 
@@ -12,10 +15,19 @@ describe('validateAIEngineConfig', () => {
     expect(() => validateAIEngineConfig(valid)).not.toThrow()
   })
 
+  it('accepts tools as an array of ToolDefinition', () => {
+    expect(() => validateAIEngineConfig({ tools: [tool] })).not.toThrow()
+  })
+
+  it('rejects tools as a string (yaml path no longer supported)', () => {
+    expect(() => validateAIEngineConfig({ tools: 'tools.yaml' as unknown as AIEngineConfig['tools'] }))
+      .toThrow(/tools must be an array/)
+  })
+
   it('accepts every documented key on the root and nested objects', () => {
     expect(() =>
       validateAIEngineConfig({
-        tools: 'tools.yaml',
+        tools: [tool],
         domainDocs: 'docs',
         llm: { provider: 'claude', apiKey: 'k', model: 'x', baseUrl: 'y', keyMode: 'server', timeoutMs: 1 },
         auth: { type: 'bearer', token: 't' },
@@ -27,7 +39,6 @@ describe('validateAIEngineConfig', () => {
           upstreamError: 'err',
         },
         executor: { timeoutMs: 1000, maxResponseBytes: 1024 },
-        hotReload: { pollIntervalMs: 5000 },
         disposeOnSignal: true,
       }),
     ).not.toThrow()

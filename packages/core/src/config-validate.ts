@@ -8,7 +8,7 @@ import type { AIEngineConfig } from './types.js'
 const ALLOWED: Record<string, readonly string[]> = {
   root: [
     'tools', 'domainDocs', 'llm', 'auth', 'rateLimiting', 'baseUrl',
-    'history', 'messages', 'executor', 'hotReload', 'routing',
+    'history', 'messages', 'executor', 'routing',
     'observability', 'disposeOnSignal',
   ],
   llm: ['provider', 'apiKey', 'model', 'baseUrl', 'keyMode', 'timeoutMs', 'instance'],
@@ -20,7 +20,6 @@ const ALLOWED: Record<string, readonly string[]> = {
     'toolNotAvailableError', 'rateLimitedError', 'internalError', 'upstreamError',
   ],
   executor: ['timeoutMs', 'maxResponseBytes'],
-  hotReload: ['pollIntervalMs'],
   routing: ['strategy', 'twoStageThreshold'],
   observability: ['tracer'],
 }
@@ -46,13 +45,24 @@ export function validateAIEngineConfig(config: AIEngineConfig): void {
   }
   checkKeys(config as unknown as Record<string, unknown>, 'root', 'AIEngineConfig')
 
+  if (!Array.isArray(config.tools)) {
+    throw new Error('AIEngineConfig.tools must be an array of ToolDefinition objects')
+  }
+  if (config.tools.length === 0) {
+    console.warn('[aiglue] no tools defined — engine will respond text-only')
+  }
+  for (const t of config.tools) {
+    if (!t || typeof t !== 'object' || typeof t.name !== 'string' || typeof t.endpoint !== 'string') {
+      throw new Error('AIEngineConfig.tools[] entries must be ToolDefinition objects (use defineTool())')
+    }
+  }
+
   if (config.llm) checkKeys(config.llm as unknown as Record<string, unknown>, 'llm', 'AIEngineConfig.llm')
   if (config.auth) checkKeys(config.auth as unknown as Record<string, unknown>, 'auth', 'AIEngineConfig.auth')
   if (config.rateLimiting) checkKeys(config.rateLimiting as unknown as Record<string, unknown>, 'rateLimiting', 'AIEngineConfig.rateLimiting')
   if (config.history) checkKeys(config.history as unknown as Record<string, unknown>, 'history', 'AIEngineConfig.history')
   if (config.messages) checkKeys(config.messages as unknown as Record<string, unknown>, 'messages', 'AIEngineConfig.messages')
   if (config.executor) checkKeys(config.executor as unknown as Record<string, unknown>, 'executor', 'AIEngineConfig.executor')
-  if (config.hotReload) checkKeys(config.hotReload as unknown as Record<string, unknown>, 'hotReload', 'AIEngineConfig.hotReload')
   if (config.routing) checkKeys(config.routing as unknown as Record<string, unknown>, 'routing', 'AIEngineConfig.routing')
   if (config.observability) checkKeys(config.observability as unknown as Record<string, unknown>, 'observability', 'AIEngineConfig.observability')
 }
