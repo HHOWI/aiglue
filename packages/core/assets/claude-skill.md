@@ -1,150 +1,225 @@
 ---
 name: aiglue
-description: Use when authoring or editing aiglue tools.yaml — the file that maps natural-language intents to REST endpoints for the @hhowi/aiglue-core runtime.
+description: Use when authoring or editing aiglue tool definitions — the TypeScript file that maps natural-language intents to REST endpoints for the @hhowi/aiglue-core runtime.
 ---
 
-# aiglue tools.yaml 작성 지침
+# aiglue Tool Authoring Guide
 
-이 스킬은 `tools.yaml`에 도구 정의를 **추가·수정·검증**할 때 사용합니다. `@hhowi/aiglue-core` 런타임은 이 파일을 whitelist·LLM 프롬프트·실행기의 유일한 소스로 사용합니다.
+## What is aiglue?
 
-## 작업 시작 전
+aiglue lets you wrap REST APIs as natural-language tools that LLMs can call. It is **not** an
+agent framework — it is a tool layer that agent frameworks (LangGraph, CrewAI, AutoGen, etc.) can
+call into. Each tool maps to exactly one HTTP request. The engine handles intent resolution,
+safety gating, confirmation flows, and response formatting; you only describe what each endpoint
+does.
 
-1. 프로젝트 루트에 `tools.yaml`이 있는지 확인. 없으면 `node_modules/@hhowi/aiglue-core/assets/tools.skeleton.yaml`을 복사.
-2. 스키마 원본: `node_modules/@hhowi/aiglue-core/schema/tools.schema.json` — 애매하면 이걸 열어 검증.
-3. 작업 완료 후 `npx aiglue lint tools.yaml` 실행.
+## `defineTool()` basics
 
-## 도구 하나 정의하는 방법
+Tools are defined in TypeScript using `defineTool()` with a zod schema for params:
 
-새 엔드포인트마다 `tools:` 배열에 객체 하나를 추가합니다. 필수 필드는 `name`, `description`, `endpoint`.
+```typescript
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
 
-```yaml
-- name: get_workout_logs
-  description: "운동 기록을 조회한다. 날짜·종목·세트·무게 포함."
-  endpoint: GET /api/workouts
-  params:
-    startDate:
-      description: "시작 날짜 (YYYY-MM-DD)"
-      type: string
-      required: false
-  response_type: table
-  risk_level: read
-  columns:
-    - { key: "date", label: "날짜", type: "date" }
-    - { key: "exercise", label: "종목" }
-  examples:
-    - "이번 주 운동 보여줘"
+export default [
+  defineTool({
+    name: 'get_user',
+    description: 'Fetch a single user by ID.',
+    endpoint: 'GET /api/users/:id',
+    params: z.object({
+      id: z.string().describe('User ID'),
+    }),
+    responseType: 'text',
+    riskLevel: 'read',
+  }),
+]
 ```
 
-### `name`
-- 소문자 영문 + 숫자 + 밑줄만 (`^[a-zA-Z_][a-zA-Z0-9_]*$`)
-- LLM이 호출할 식별자. 파일 전체에서 고유해야 함
-- 동사로 시작하는 스네이크 케이스 권장 (`get_`, `list_`, `create_`, `update_`, `delete_`)
+Pass the array (or the file path) to `createAIEngine({ tools: './tools.ts' })`.
 
-### `description`
-- LLM이 툴을 고를 때 읽는 문장. 1~2문장, 조건과 반환하는 것을 명시
-- 예: "주간 매출 데이터를 조회한다. 일자별·지역별 합계 포함."
+## Required fields
 
-### `endpoint`
-- `"METHOD /path"` 포맷. METHOD는 `GET|POST|PUT|PATCH|DELETE`
-- path 파라미터는 `:key` 표기: `GET /api/users/:id`
-- `:key`가 있으면 반드시 `params.key`도 정의해야 함 (lint에서 잡힘)
+| Field | Required | Notes |
+|---|---|---|
+| `name` | always | `^[a-zA-Z_][a-zA-Z0-9_]*$`, unique across all tools |
+| `description` | always | 1-2 sentences the LLM reads to decide when to call this tool |
+| `endpoint` | always | `"METHOD /path"` — METHOD is `GET\|POST\|PUT\|PATCH\|DELETE` |
+| `confirmMessage` | when `riskLevel` is `'write'` or `'critical'` | Shown to the user before execution |
+| `columns` | when `responseType` is `'table'` | Array of `{ key, label, type? }` objects |
 
-### `params`
-- 객체, 키는 파라미터 이름
-- 각 항목 필수 필드: `description`
-- 선택 필드: `type`(기본 string), `required`, `default`, `enum`
+Path variables use `:key` syntax (`GET /api/users/:id`). Every `:key` in the endpoint **must**
+have a matching key in the `params` schema; `aiglue lint` flags mismatches.
 
-### `risk_level`
-- `read` (기본값) — 즉시 실행
-- `write` — 사용자 확인 필요, `confirm_message` 반드시 정의
-- `critical` — 쓰기와 동일한 확인 요구. 되돌리기 불가능한 작업(삭제 등)에 사용
+## zod cheatsheet
 
-### `response_type`
-- `text` (기본값) — 짧은 메시지 응답
-- `table` — 반드시 `columns` 정의
-- `raw` — API 응답을 구조 그대로 전달. 프론트에 이미 있는 그리드·차트 컴포넌트가 그 응답을 바로 렌더할 수 있을 때 선택
-- `summary` — LLM이 자연어로 요약. 프로필·상태 조회처럼 사용자에게 풀어서 말해주고 싶을 때. LLM 2차 호출 발생(토큰 ~300 추가)
-- `chart`·`auto`는 현재 런타임에서 미구현 → 사용하지 말 것
+```typescript
+z.string().describe('Human-readable explanation for the LLM')
+z.string().optional()                                           // not required
+z.string().default('asc')                                       // optional with fallback
+z.enum(['asc', 'desc'])                                         // fixed value set
+z.number().min(1).max(100)                                      // bounded number
+z.array(z.object({ id: z.string(), label: z.string() }))        // nested array
 
-### `include_summary` (선택, `response_type: table` 전용)
-- `true`로 설정하면 테이블 응답에 한 줄짜리 LLM 요약 문장(`summary` 필드)이 추가됨
-- `response_type: table`이 아닌 곳에 쓰면 lint에서 `summary-requires-table` 에러
+// Combining
+z.object({
+  userId:   z.string().describe('Target user'),
+  limit:    z.number().min(1).max(50).default(20).describe('Page size'),
+  status:   z.enum(['active', 'inactive']).optional().describe('Filter by status'),
+})
+```
 
-### `response_mapping` (선택, response_type=table일 때 유용)
-- API 응답이 `{ data: { list: [...], total: N } }` 형태이면:
-  ```yaml
-  response_mapping:
-    data_path: "data.list"
-    total_path: "data.total"
-  ```
-- 응답이 곧 배열이면 생략 가능
+Always call `.describe(...)` on every field — the LLM reads descriptions to fill params
+correctly.
 
-### `request_body_template` (POST/PUT/PATCH 전용)
-- 기본 body. `params`가 같은 키를 덮어씀
-- 페이지네이션 기본값 등을 여기에 두면 LLM이 신경 쓸 필요 없음
+## `responseType` guide
 
-### `confirm_message`
-- `risk_level: write | critical`이면 반드시 정의
-- 사용자에게 보여줄 확인 문구 (한국어 권장, 서비스 톤에 맞춤)
+**`text`** — default; engine returns the API response serialised as a natural-language string.
 
-### `examples`
-- 자연어 예시 2~5개. LLM에 description 뒤에 이어붙어 정확도 상승
-- 사용자가 실제로 할 법한 문장으로
+```typescript
+defineTool({
+  name: 'get_order_status',
+  description: 'Get the current status of an order.',
+  endpoint: 'GET /orders/:orderId',
+  params: z.object({ orderId: z.string().describe('Order ID') }),
+  responseType: 'text',
+  riskLevel: 'read',
+})
+```
 
-## 편집할 때 하지 말 것
+**`table`** — structured rows; `columns` required. Use `responseMapping.dataPath` when the
+array is nested inside the response object.
 
-- 스키마에 없는 커스텀 필드 추가 (lint가 거부). 새 필드가 필요하면 스키마 확장이 먼저
-- 존재하지 않는 `response_type`·`risk_level` 값 사용
-- `critical` 엔드포인트를 `confirm_message` 없이 방치
-- 삭제 엔드포인트에 `risk_level: write` (대신 `critical` 사용)
-- `endpoint`에서 ":" 없이 path 파라미터 표기 (`/users/{id}`는 허용되지 않음 — `/users/:id`)
+```typescript
+defineTool({
+  name: 'list_products',
+  description: 'List products with optional category filter.',
+  endpoint: 'GET /products',
+  params: z.object({
+    category: z.string().optional().describe('Category slug'),
+  }),
+  responseType: 'table',
+  riskLevel: 'read',
+  responseMapping: { dataPath: 'data.items' },
+  columns: [
+    { key: 'id',    label: 'ID' },
+    { key: 'name',  label: 'Name' },
+    { key: 'price', label: 'Price', type: 'number' },
+  ],
+})
+```
 
-## 사용자 피로 최소화 패턴
+**`raw`** — passes the API response through untouched. Use when the caller (an agent framework)
+wants the raw JSON to process further, or when a front-end component renders it directly.
 
-사용자가 매 질의에 모든 조건을 정밀히 적지 않아도 되도록 설계합니다. 다섯 축:
+```typescript
+defineTool({
+  name: 'export_report',
+  description: 'Download raw report JSON for downstream processing.',
+  endpoint: 'GET /reports/:reportId/export',
+  params: z.object({ reportId: z.string().describe('Report ID') }),
+  responseType: 'raw',
+  riskLevel: 'read',
+})
+```
 
-- **`params.default`**: 자주 쓰는 기본값을 지정. 생략 시 자동 적용됩니다.
+**`summary`** — calls the LLM a second time to produce a natural-language summary (max ~300
+tokens). Use for long list responses where a narrative summary is more useful than raw rows.
+Adds a `summary` field alongside the response. Set `includeSummary: true` on a `table` tool to
+get both the table rows and the summary together.
 
-  ```yaml
-  params:
-    period:
-      description: "기간 (this_week, last_week, this_month)"
-      type: string
-      default: this_week
-  ```
+```typescript
+defineTool({
+  name: 'list_incidents',
+  description: 'List recent incidents and get an AI summary.',
+  endpoint: 'GET /incidents',
+  params: z.object({
+    days: z.number().default(7).describe('Lookback window in days'),
+  }),
+  responseType: 'table',
+  riskLevel: 'read',
+  includeSummary: true,
+  columns: [
+    { key: 'id',       label: 'ID' },
+    { key: 'severity', label: 'Severity' },
+    { key: 'title',    label: 'Title' },
+  ],
+})
+```
 
-- **`examples` 풍부화 (5개 이상 권장)**: 같은 의도의 다양한 자연어 표현을 나열해 표현 흔들림을 흡수합니다.
+## `riskLevel` + confirm flow
 
-  ```yaml
-  examples:
-    - "사용자 보여줘"
-    - "유저 목록"
-    - "활성 유저"
-    - "멤버 리스트"
-    - "가입자 조회"
-  ```
+| Value | Behaviour |
+|---|---|
+| `'read'` | Executes immediately (default when omitted) |
+| `'write'` | Pauses; shows `confirmMessage` to the user before executing |
+| `'critical'` | Same as `write` but signals irreversibility — use for deletes and financial ops |
 
-- **`description`에 기본 동작 명시**: 조건이 없을 때 무엇이 일어나는지 한 문장 추가. LLM이 안전한 기본값을 고르게 됩니다.
+`confirmMessage` supports `{param}` interpolation from resolved params:
 
-  ```yaml
-  description: "사용자 목록을 조회한다. 조건 미지정 시 최근 30일 내 활성 사용자."
-  ```
+```typescript
+defineTool({
+  name: 'delete_user',
+  description: 'Permanently delete a user account.',
+  endpoint: 'DELETE /users/:userId',
+  params: z.object({
+    userId: z.string().describe('User to delete'),
+  }),
+  riskLevel: 'critical',
+  confirmMessage: 'Permanently delete user {userId}? This cannot be undone.',
+})
+```
 
-- **조직 특수 용어·관습은 `domainDocs`로 주입**: `createAIEngine({ domainDocs: "..." })` — system prompt에 합쳐집니다. 예: "이 시스템에서 '환자'는 병동 재원 중인 환자를 의미한다".
+```typescript
+defineTool({
+  name: 'send_invoice',
+  description: 'Send invoice to a customer.',
+  endpoint: 'POST /invoices/:invoiceId/send',
+  params: z.object({
+    invoiceId: z.string().describe('Invoice ID'),
+    email:     z.string().describe('Recipient email'),
+  }),
+  riskLevel: 'write',
+  confirmMessage: 'Send invoice {invoiceId} to {email}?',
+})
+```
 
-- **LLM은 기본적으로 부족 정보를 되묻도록 지시되어 있음** (system prompt에 내장). 완전한 한 문장을 사용자에게 강요하지 말 것 — clarify 왕복 + history로 짧게 답해도 해석됩니다.
+## BFF Pattern (CRITICAL)
 
-## 검증 플로우
+```
+aiglue tools are single-call by design. Each tool maps to exactly one HTTP request.
 
-편집 후 항상:
+For workflows that need multiple API calls — especially with state passing between
+them — DO NOT chain multiple tools. Instead, build a backend endpoint that wraps
+the workflow, and expose THAT endpoint as a single tool.
+
+❌ Bad — 3 hops in aiglue:
+   list_orders + extract IDs + send_notification
+
+✅ Good — 1 BFF endpoint:
+   POST /erp/customers/:id/send-unpaid-reminder
+   defineTool({ endpoint: 'POST /erp/customers/:id/send-unpaid-reminder', riskLevel: 'write', ... })
+
+Why:
+- Transactions and rollback handled by backend, not LLM
+- Single confirm prompt (not mid-chain interruptions)
+- Testable as one unit
+- aiglue stays a clean tool surface for agent frameworks (LangGraph, CrewAI, etc.)
+```
+
+## Parallel tool use
+
+The LLM may call two or more `riskLevel: 'read'` tools in the same turn when answering a
+compound question. aiglue runs them in parallel and returns an `AIEMultiResponse` containing
+each result. **Write and critical tools cannot be parallelised** — they require a dedicated
+turn so the user can review and confirm each action individually.
+
+## Validate your tools
 
 ```bash
-npx aiglue lint tools.yaml
+npx aiglue lint tools.ts
 ```
 
-lint 에러는 rule별로 분류됩니다:
-- `schema` — JSON Schema 위반 (필수 필드·타입)
-- `path-key-mismatch` — endpoint의 `:key`가 params에 없음
-- `confirm-message-required` — write/critical인데 confirm_message 없음
-- `table-columns-required` — table인데 columns 없음
-- `duplicate-name` — 같은 name을 가진 도구가 둘 이상
+Lint rules: `schema` · `path-key-mismatch` · `confirm-message-required` ·
+`table-columns-required` · `duplicate-name` · `summary-requires-table`.
+
+Exit codes: `0` = OK, `1` = violations found, `2` = no arguments.

@@ -1,58 +1,228 @@
 ---
-description: aiglue tools.yaml authoring guide — apply when editing tools.yaml
+description: aiglue tool definition authoring guide — apply when editing tools.ts
 globs:
-  - tools.yaml
-  - "**/tools.yaml"
+  - tools.ts
+  - "**/tools.ts"
 alwaysApply: false
 ---
 
-# aiglue tools.yaml 작성 지침
+# aiglue Tool Authoring Guide
 
-이 규칙은 `tools.yaml`을 편집할 때 자동 적용됩니다. `@hhowi/aiglue-core` 런타임이 이 파일을 읽어 LLM tool 정의·safety whitelist·executor 라우팅을 모두 구성합니다.
+## What is aiglue?
 
-## 스키마 원본
-`node_modules/@hhowi/aiglue-core/schema/tools.schema.json` — 모호하면 이 파일을 참조.
+aiglue lets you wrap REST APIs as natural-language tools that LLMs can call. It is **not** an
+agent framework — it is a tool layer that agent frameworks (LangGraph, CrewAI, AutoGen, etc.) can
+call into. Each tool maps to exactly one HTTP request. The engine handles intent resolution,
+safety gating, confirmation flows, and response formatting; you only describe what each endpoint
+does.
 
-## 필수 규칙
+## `defineTool()` basics
 
-- `name`: `^[a-zA-Z_][a-zA-Z0-9_]*$` 패턴, 파일 내 고유
-- `description`: LLM이 읽는 한두 문장
-- `endpoint`: `"GET|POST|PUT|PATCH|DELETE /path"` 포맷. path 파라미터는 `:key`
-- `endpoint`에 `:key`가 있으면 `params.key` 반드시 정의
-- `risk_level: write | critical`이면 `confirm_message` 반드시 정의
-- `response_type: table`이면 `columns` 반드시 정의
-- `response_type`·`risk_level`의 값은 스키마 enum 밖 사용 금지
+Tools are defined in TypeScript using `defineTool()` with a zod schema for params:
 
-## 편집 후 검증
+```typescript
+import { defineTool } from '@hhowi/aiglue-core'
+import { z } from 'zod'
+
+export default [
+  defineTool({
+    name: 'get_user',
+    description: 'Fetch a single user by ID.',
+    endpoint: 'GET /api/users/:id',
+    params: z.object({
+      id: z.string().describe('User ID'),
+    }),
+    responseType: 'text',
+    riskLevel: 'read',
+  }),
+]
+```
+
+Pass the array (or the file path) to `createAIEngine({ tools: './tools.ts' })`.
+
+## Required fields
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | always | `^[a-zA-Z_][a-zA-Z0-9_]*$`, unique across all tools |
+| `description` | always | 1-2 sentences the LLM reads to decide when to call this tool |
+| `endpoint` | always | `"METHOD /path"` — METHOD is `GET\|POST\|PUT\|PATCH\|DELETE` |
+| `confirmMessage` | when `riskLevel` is `'write'` or `'critical'` | Shown to the user before execution |
+| `columns` | when `responseType` is `'table'` | Array of `{ key, label, type? }` objects |
+
+Path variables use `:key` syntax (`GET /api/users/:id`). Every `:key` in the endpoint **must**
+have a matching key in the `params` schema; `aiglue lint` flags mismatches.
+
+## zod cheatsheet
+
+```typescript
+z.string().describe('Human-readable explanation for the LLM')
+z.string().optional()                                           // not required
+z.string().default('asc')                                       // optional with fallback
+z.enum(['asc', 'desc'])                                         // fixed value set
+z.number().min(1).max(100)                                      // bounded number
+z.array(z.object({ id: z.string(), label: z.string() }))        // nested array
+
+// Combining
+z.object({
+  userId:   z.string().describe('Target user'),
+  limit:    z.number().min(1).max(50).default(20).describe('Page size'),
+  status:   z.enum(['active', 'inactive']).optional().describe('Filter by status'),
+})
+```
+
+Always call `.describe(...)` on every field — the LLM reads descriptions to fill params
+correctly.
+
+## `responseType` guide
+
+**`text`** — default; engine returns the API response serialised as a natural-language string.
+
+```typescript
+defineTool({
+  name: 'get_order_status',
+  description: 'Get the current status of an order.',
+  endpoint: 'GET /orders/:orderId',
+  params: z.object({ orderId: z.string().describe('Order ID') }),
+  responseType: 'text',
+  riskLevel: 'read',
+})
+```
+
+**`table`** — structured rows; `columns` required. Use `responseMapping.dataPath` when the
+array is nested inside the response object.
+
+```typescript
+defineTool({
+  name: 'list_products',
+  description: 'List products with optional category filter.',
+  endpoint: 'GET /products',
+  params: z.object({
+    category: z.string().optional().describe('Category slug'),
+  }),
+  responseType: 'table',
+  riskLevel: 'read',
+  responseMapping: { dataPath: 'data.items' },
+  columns: [
+    { key: 'id',    label: 'ID' },
+    { key: 'name',  label: 'Name' },
+    { key: 'price', label: 'Price', type: 'number' },
+  ],
+})
+```
+
+**`raw`** — passes the API response through untouched. Use when the caller (an agent framework)
+wants the raw JSON to process further, or when a front-end component renders it directly.
+
+```typescript
+defineTool({
+  name: 'export_report',
+  description: 'Download raw report JSON for downstream processing.',
+  endpoint: 'GET /reports/:reportId/export',
+  params: z.object({ reportId: z.string().describe('Report ID') }),
+  responseType: 'raw',
+  riskLevel: 'read',
+})
+```
+
+**`summary`** — calls the LLM a second time to produce a natural-language summary (max ~300
+tokens). Use for long list responses where a narrative summary is more useful than raw rows.
+Adds a `summary` field alongside the response. Set `includeSummary: true` on a `table` tool to
+get both the table rows and the summary together.
+
+```typescript
+defineTool({
+  name: 'list_incidents',
+  description: 'List recent incidents and get an AI summary.',
+  endpoint: 'GET /incidents',
+  params: z.object({
+    days: z.number().default(7).describe('Lookback window in days'),
+  }),
+  responseType: 'table',
+  riskLevel: 'read',
+  includeSummary: true,
+  columns: [
+    { key: 'id',       label: 'ID' },
+    { key: 'severity', label: 'Severity' },
+    { key: 'title',    label: 'Title' },
+  ],
+})
+```
+
+## `riskLevel` + confirm flow
+
+| Value | Behaviour |
+|---|---|
+| `'read'` | Executes immediately (default when omitted) |
+| `'write'` | Pauses; shows `confirmMessage` to the user before executing |
+| `'critical'` | Same as `write` but signals irreversibility — use for deletes and financial ops |
+
+`confirmMessage` supports `{param}` interpolation from resolved params:
+
+```typescript
+defineTool({
+  name: 'delete_user',
+  description: 'Permanently delete a user account.',
+  endpoint: 'DELETE /users/:userId',
+  params: z.object({
+    userId: z.string().describe('User to delete'),
+  }),
+  riskLevel: 'critical',
+  confirmMessage: 'Permanently delete user {userId}? This cannot be undone.',
+})
+```
+
+```typescript
+defineTool({
+  name: 'send_invoice',
+  description: 'Send invoice to a customer.',
+  endpoint: 'POST /invoices/:invoiceId/send',
+  params: z.object({
+    invoiceId: z.string().describe('Invoice ID'),
+    email:     z.string().describe('Recipient email'),
+  }),
+  riskLevel: 'write',
+  confirmMessage: 'Send invoice {invoiceId} to {email}?',
+})
+```
+
+## BFF Pattern (CRITICAL)
+
+```
+aiglue tools are single-call by design. Each tool maps to exactly one HTTP request.
+
+For workflows that need multiple API calls — especially with state passing between
+them — DO NOT chain multiple tools. Instead, build a backend endpoint that wraps
+the workflow, and expose THAT endpoint as a single tool.
+
+❌ Bad — 3 hops in aiglue:
+   list_orders + extract IDs + send_notification
+
+✅ Good — 1 BFF endpoint:
+   POST /erp/customers/:id/send-unpaid-reminder
+   defineTool({ endpoint: 'POST /erp/customers/:id/send-unpaid-reminder', riskLevel: 'write', ... })
+
+Why:
+- Transactions and rollback handled by backend, not LLM
+- Single confirm prompt (not mid-chain interruptions)
+- Testable as one unit
+- aiglue stays a clean tool surface for agent frameworks (LangGraph, CrewAI, etc.)
+```
+
+## Parallel tool use
+
+The LLM may call two or more `riskLevel: 'read'` tools in the same turn when answering a
+compound question. aiglue runs them in parallel and returns an `AIEMultiResponse` containing
+each result. **Write and critical tools cannot be parallelised** — they require a dedicated
+turn so the user can review and confirm each action individually.
+
+## Validate your tools
 
 ```bash
-npx aiglue lint tools.yaml
+npx aiglue lint tools.ts
 ```
 
-lint 에러 룰 카탈로그: `schema` · `path-key-mismatch` · `confirm-message-required` · `table-columns-required` · `duplicate-name` · `summary-requires-table`.
+Lint rules: `schema` · `path-key-mismatch` · `confirm-message-required` ·
+`table-columns-required` · `duplicate-name` · `summary-requires-table`.
 
-## 사용자 피로 최소화
-
-- `params.default`로 자주 쓰는 값을 기본값으로 지정
-- `examples`에 같은 의도의 표현을 5개 이상 나열
-- `description`에 "조건 미지정 시 기본 동작" 명시
-- 조직 특수 용어는 `domainDocs`로 system prompt에 주입
-
-## 템플릿
-
-```yaml
-- name: <verb>_<noun>
-  description: "..."
-  endpoint: GET /api/...
-  params:
-    <key>:
-      description: "..."
-      type: string
-      required: false
-  response_type: text
-  risk_level: read
-  examples:
-    - "..."
-```
-
-write/critical일 때만 `confirm_message` 추가. table일 때만 `columns` 추가.
+Exit codes: `0` = OK, `1` = violations found, `2` = no arguments.
