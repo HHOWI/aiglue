@@ -157,6 +157,30 @@ describe('useAIGlue — sendConfirm()', () => {
   })
 })
 
+describe('useAIGlue — multi response pass-through', () => {
+  it('surfaces AIEMultiResponse unchanged when result.type === "multi"', async () => {
+    const multiResponse = {
+      type: 'multi',
+      results: [
+        { type: 'text', content: 'first' },
+        { type: 'table', columns: ['id'], rows: [['1']] },
+      ],
+    }
+    fetchMock.mockResolvedValueOnce(jsonResponse(multiResponse))
+
+    const { result } = renderHook(() => useAIGlue({ endpoint: ENDPOINT }))
+
+    let response: unknown
+    await act(async () => {
+      response = await result.current.send('show multi')
+    })
+
+    expect((response as { type: string }).type).toBe('multi')
+    expect((result.current.result as { type: string }).type).toBe('multi')
+    expect((result.current.result as typeof multiResponse).results).toHaveLength(2)
+  })
+})
+
 describe('useAIGlue — reset()', () => {
   it('wipes history, result, error, and the cached confirm', async () => {
     fetchMock.mockResolvedValueOnce(

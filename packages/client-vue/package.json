@@ -1,6 +1,6 @@
 {
   "name": "@hhowi/aiglue-client-vue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless Vue composable for the @hhowi/aiglue-core /ai/chat endpoint",
   "type": "module",
   "main": "dist/index.js",
@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "peerDependencies": {
+    "@hhowi/aiglue-core": "^0.4.0",
     "vue": "^3.0.0"
   },
   "dependencies": {

@@ -122,6 +122,28 @@ describe('useAIGlue (Vue) — sendConfirm()', () => {
   })
 })
 
+describe('useAIGlue (Vue) — multi response pass-through', () => {
+  it('surfaces AIEMultiResponse unchanged when result.value.type === "multi"', async () => {
+    const multiResponse = {
+      type: 'multi',
+      results: [
+        { type: 'text', content: 'first' },
+        { type: 'table', columns: ['id'], rows: [['1']] },
+      ],
+    }
+    fetchMock.mockResolvedValueOnce(jsonResponse(multiResponse))
+
+    const { send, result } = useAIGlue({ endpoint: ENDPOINT })
+
+    const response = await send('show multi')
+    await nextTick()
+
+    expect((response as { type: string }).type).toBe('multi')
+    expect((result.value as { type: string }).type).toBe('multi')
+    expect((result.value as typeof multiResponse).results).toHaveLength(2)
+  })
+})
+
 describe('useAIGlue (Vue) — reset()', () => {
   it('wipes history, result, error, and the cached confirm', async () => {
     fetchMock.mockResolvedValueOnce(
