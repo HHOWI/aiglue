@@ -1,6 +1,8 @@
 export { createAIEngine } from './engine.js'
 export type { AIEngine } from './engine.js'
 
+export { defineTool } from './define-tool.js'
+
 export type {
   AIEngineConfig,
   AIEResponse,
@@ -12,19 +14,20 @@ export type {
   AIEConfirmResponse,
   AIEClarifyResponse,
   AIEErrorResponse,
-  ToolsConfig,
+  AIEMultiResponse,
   ToolDefinition,
+  ColumnDefinition,
+  ResponseMapping,
   LLMConfig,
   AuthConfig,
   ChatMessage,
   HistoryConfig,
   MessagesConfig,
   ExecutorConfig,
-  HotReloadConfig,
+  RoutingConfig,
+  ObservabilityConfig,
+  RateLimitConfig,
 } from './types.js'
-
-export { lintFile } from './validate/lint.js'
-export type { LintError, LintResult } from './validate/types.js'
 
 export { createMCPServer } from './mcp/server.js'
 export type { MCPServerConfig } from './mcp/server.js'
